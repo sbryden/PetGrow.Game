@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Mix ingredients into an egg and hatch unique virtual pet creatures! A Tamagotchi-style game powered by AI.">
+  <meta name="theme-color" content="#00d2ff">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <title>PetGrow — Egg Mixer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ========== SCREEN 1: EGG LAB ========== -->
+  <div id="egg-lab" class="screen active">
+    <div class="top-bar">
+      <button id="btn-sound-lab" class="sound-toggle" title="Toggle sound">🔊</button>
+      <h1 class="game-title">🥚 PetGrow</h1>
+      <button id="btn-settings" class="settings-btn" title="API key settings">⚙️</button>
+    </div>
+    <p class="subtitle">Mix ingredients into your egg and hatch a creature!</p>
+
+    <!-- Egg Animation -->
+    <div class="egg-container">
+      <div id="egg" class="egg">
+        <div class="egg-3d">
+          <div class="egg-shell">
+            <div class="egg-highlight"></div>
+            <div class="egg-highlight-small"></div>
+            <div class="egg-shadow"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Syringe injection overlay (appears over egg, needle stabs into it) -->
+      <div id="syringe-overlay" class="syringe-overlay hidden">
+        <div id="syringe" class="syringe">
+          <div class="syringe-body">
+            <div class="syringe-plunger-handle">
+              <div class="syringe-plunger-rod"></div>
+            </div>
+            <div class="syringe-barrel">
+              <div id="syringe-serum" class="syringe-serum"></div>
+              <div class="syringe-barrel-shine"></div>
+            </div>
+            <div class="syringe-tip"></div>
+            <div class="syringe-needle"></div>
+          </div>
+        </div>
+        <div class="injection-splash" id="injection-splash"></div>
+      </div>
+    </div>
+
+    <!-- Ingredient Pickers (Dropdowns) -->
+    <div class="pickers">
+
+      <!-- Base Animal -->
+      <div class="picker-group">
+        <h3>🐾 Base Animal</h3>
+        <div class="picker-dropdown-wrap">
+          <select class="ingredient-select" data-category="animal">
+            <option value="">— Choose an animal —</option>
+            <option value="Cat">🐱 Cat</option>
+            <option value="Frog">🐸 Frog</option>
+            <option value="Dragon">🐉 Dragon</option>
+            <option value="Octopus">🐙 Octopus</option>
+            <option value="Bunny">🐰 Bunny</option>
+            <option value="Axolotl">🦎 Axolotl</option>
+            <option value="Penguin">🐧 Penguin</option>
+            <option value="Fox">🦊 Fox</option>
+            <option value="Beetle">🪲 Beetle</option>
+            <option value="Sloth">🦥 Sloth</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Color / Material -->
+      <div class="picker-group">
+        <h3>🎨 Color / Material</h3>
+        <div class="picker-dropdown-wrap">
+          <select class="ingredient-select" data-category="color">
+            <option value="">— Choose a color —</option>
+            <option value="Galaxy Purple">💜 Galaxy Purple</option>
+            <option value="Slime Green">💚 Slime Green</option>
+            <option value="Cotton Candy Pink">🩷 Cotton Candy Pink</option>
+            <option value="Lava Orange">🧡 Lava Orange</option>
+            <option value="Ocean Blue">💙 Ocean Blue</option>
+            <option value="Golden Chrome">⭐ Golden Chrome</option>
+            <option value="Midnight Black">🖤 Midnight Black</option>
+            <option value="Rainbow Tie-Dye">🌈 Rainbow Tie-Dye</option>
+            <option value="Bubblegum">🫧 Bubblegum</option>
+            <option value="Holographic">✨ Holographic</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Wild Card Object -->
+      <div class="picker-group">
+        <h3>🃏 Wild Card</h3>
+        <div class="picker-dropdown-wrap">
+          <select class="ingredient-select" data-category="wildcard">
+            <option value="">— Choose a wild card —</option>
+            <option value="Top Hat">🎩 Top Hat</option>
+            <option value="Roller Skates">⛸️ Roller Skates</option>
+            <option value="Tiny Wings">🪽 Tiny Wings</option>
+            <option value="Pizza Slice">🍕 Pizza Slice</option>
+            <option value="Lightning Bolt">⚡ Lightning Bolt</option>
+            <option value="Boombox">📻 Boombox</option>
+            <option value="Sunglasses">😎 Sunglasses</option>
+            <option value="Sword">⚔️ Sword</option>
+            <option value="Mushroom">🍄 Mushroom</option>
+            <option value="Jetpack">🚀 Jetpack</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Element / Texture -->
+      <div class="picker-group">
+        <h3>✨ Element / Texture</h3>
+        <div class="picker-dropdown-wrap">
+          <select class="ingredient-select" data-category="element">
+            <option value="">— Choose an element —</option>
+            <option value="Fire">🔥 Fire</option>
+            <option value="Ice Crystal">🧊 Ice Crystal</option>
+            <option value="Fluffy Cloud">☁️ Fluffy Cloud</option>
+            <option value="Stone and Rock">🪨 Stone / Rock</option>
+            <option value="Sparkle Glitter">✨ Sparkle Glitter</option>
+            <option value="Vines and Leaves">🌿 Vines & Leaves</option>
+            <option value="Pixel 8-Bit">👾 Pixel / 8-Bit</option>
+            <option value="Gummy Jelly">🍬 Gummy / Jelly</option>
+            <option value="Electric Neon">💡 Electric / Neon</option>
+            <option value="Shadow and Smoke">🌑 Shadow / Smoke</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Heat Lamp Mini-Game (shown before hatching) -->
+    <div id="heat-lamp-game" class="heat-lamp-game hidden">
+      <h2 class="lamp-title">🔦 Warm the Egg!</h2>
+      <p class="lamp-instructions">Tap or press <kbd>SPACE</kbd> to toggle the heat lamp on/off.<br>Keep the needle in the <span class="green-text">GREEN</span> zone!</p>
+
+      <div class="lamp-scene">
+        <!-- The heat lamp -->
+        <div id="heat-lamp" class="heat-lamp lamp-off">
+          <div class="lamp-head">💡</div>
+          <div class="lamp-arm"></div>
+          <div id="lamp-beam" class="lamp-beam hidden"></div>
+        </div>
+
+        <!-- The egg being warmed -->
+        <div class="lamp-egg-wrap">
+          <div id="lamp-egg" class="lamp-egg"></div>
+        </div>
+      </div>
+
+      <!-- Temperature Gauge -->
+      <div class="gauge-wrap">
+        <div class="gauge">
+          <div class="gauge-zone gauge-blue"></div>
+          <div class="gauge-zone gauge-green"></div>
+          <div class="gauge-zone gauge-red"></div>
+          <div id="gauge-needle" class="gauge-needle"></div>
+        </div>
+        <div class="gauge-labels">
+          <span class="gauge-label-cold">❄️ Cold</span>
+          <span class="gauge-label-good">✅ Perfect</span>
+          <span class="gauge-label-hot">🔥 Hot!</span>
+        </div>
+      </div>
+
+      <div class="lamp-timer-bar">
+        <div id="lamp-timer-fill" class="lamp-timer-fill"></div>
+      </div>
+      <p id="lamp-status" class="lamp-status">Lamp is OFF — press SPACE</p>
+    </div>
+
+    <!-- Name Input -->
+    <div class="name-section">
+      <label for="pet-name-input">Name your creature:</label>
+      <input type="text" id="pet-name-input" placeholder="e.g. Taco-Pup" maxlength="20">
+    </div>
+
+    <!-- Hatch Button -->
+    <button id="hatch-btn" class="hatch-btn" disabled>🥚 HATCH IT!</button>
+    <p id="hatch-hint" class="hint">Pick at least a Base Animal and give it a name!</p>
+
+    <!-- Gallery Button -->
+    <button id="btn-gallery-lab" class="gallery-nav-btn">🏆 My Creatures</button>
+  </div>
+
+  <!-- ========== HATCHING ANIMATION OVERLAY ========== -->
+  <div id="hatching-overlay" class="overlay hidden">
+    <div class="hatching-content">
+      <div id="hatching-egg" class="egg hatching">🥚</div>
+      <p id="hatching-text" class="hatching-text">Your egg is hatching...</p>
+    </div>
+  </div>
+
+  <!-- ========== SCREEN 2: PET GAME ========== -->
+  <div id="pet-game" class="screen hidden">
+    <div class="top-bar">
+      <button id="btn-sound-game" class="sound-toggle" title="Toggle sound">🔊</button>
+      <h1 class="game-title-small">🥚 PetGrow</h1>
+      <button id="btn-settings-game" class="settings-btn" title="API key settings">⚙️</button>
+    </div>
+
+    <!-- Needs HUD -->
+    <div id="needs-hud" class="needs-hud">
+      <div class="need-bar">
+        <span class="need-icon">🍖</span>
+        <div class="need-track"><div class="need-fill" id="need-hunger"></div></div>
+      </div>
+      <div class="need-bar">
+        <span class="need-icon">🧼</span>
+        <div class="need-track"><div class="need-fill" id="need-cleanliness"></div></div>
+      </div>
+      <div class="need-bar">
+        <span class="need-icon">🎾</span>
+        <div class="need-track"><div class="need-fill" id="need-fun"></div></div>
+      </div>
+      <div class="need-bar">
+        <span class="need-icon">💤</span>
+        <div class="need-track"><div class="need-fill" id="need-energy"></div></div>
+      </div>
+    </div>
+
+    <!-- Creature Display -->
+    <div class="creature-card">
+      <div class="level-badge" id="level-badge">�� Baby</div>
+      <div id="game-world" class="game-world">
+        <div id="room-bg" class="room-bg"></div>
+        <div id="room-props" class="room-props"></div>
+        <div id="pet-parts" class="pet-parts">
+          <img id="pet-img-base" class="pet-part-img pet-part-base" src="" alt="Your creature">
+          <!-- Back layers -->
+          <img id="pet-img-tail" class="pet-part-img pet-part-tail" src="" alt="">
+          <img id="pet-img-left-foot" class="pet-part-img pet-part-left-foot" src="" alt="">
+          <img id="pet-img-right-foot" class="pet-part-img pet-part-right-foot" src="" alt="">
+          <img id="pet-img-left-thigh" class="pet-part-img pet-part-left-thigh" src="" alt="">
+          <img id="pet-img-right-thigh" class="pet-part-img pet-part-right-thigh" src="" alt="">
+          <!-- Mid layers -->
+          <img id="pet-img-left-shoulder" class="pet-part-img pet-part-left-shoulder" src="" alt="">
+          <img id="pet-img-left-hand" class="pet-part-img pet-part-left-hand" src="" alt="">
+          <img id="pet-img-right-shoulder" class="pet-part-img pet-part-right-shoulder" src="" alt="">
+          <img id="pet-img-right-hand" class="pet-part-img pet-part-right-hand" src="" alt="">
+          <!-- Core layers -->
+          <img id="pet-img-belly" class="pet-part-img pet-part-belly" src="" alt="">
+          <img id="pet-img-chest" class="pet-part-img pet-part-chest" src="" alt="">
+          <img id="pet-img-neck" class="pet-part-img pet-part-neck" src="" alt="">
+          <!-- Front layers -->
+          <img id="pet-img-head" class="pet-part-img pet-part-head" src="" alt="">
+          <div id="pet-eyelid" class="pet-part-eyelid"></div>
+        </div>
+        <div id="loading-spinner" class="loading-spinner hidden">
+          <div class="spinner"></div>
+        </div>
+        <!-- Room transition indicators (shown while dragging) -->
+        <div id="room-indicator-left" class="room-indicator room-indicator-left hidden">
+          <span class="room-indicator-arrow">‹</span>
+          <span class="room-indicator-label" id="room-label-left"></span>
+        </div>
+        <div id="room-indicator-right" class="room-indicator room-indicator-right hidden">
+          <span class="room-indicator-label" id="room-label-right"></span>
+          <span class="room-indicator-arrow">›</span>
+        </div>
+      </div>
+      <h2 id="creature-name" class="creature-name">My Pet</h2>
+      <span id="rarity-badge" class="rarity-badge"></span>
+      <p id="creature-desc" class="creature-desc"></p>
+    </div>
+
+    <!-- Click Counter -->
+    <div class="stats-bar">
+      <div class="stat">
+        <span class="stat-label">Clicks</span>
+        <span class="stat-value" id="click-count">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Level</span>
+        <span class="stat-value" id="level-text">Baby</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Next</span>
+        <span class="stat-value" id="next-level">20 to go</span>
+      </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="action-buttons">
+      <button id="btn-status" class="action-btn status-btn">
+        <span class="btn-icon">📊</span>
+        <span class="btn-label">Status</span>
+      </button>
+      <button id="btn-share" class="action-btn share-btn">
+        <span class="btn-icon">📤</span>
+        <span class="btn-label">Share</span>
+      </button>
+    </div>
+
+    <!-- Bottom Buttons -->
+    <div class="bottom-buttons">
+      <button id="btn-new-creature" class="new-creature-btn">🥚 New Creature</button>
+      <button id="btn-discard" class="discard-btn">🗑️ Discard</button>
+      <button id="btn-gallery-game" class="gallery-nav-btn">🏆 My Creatures</button>
+    </div>
+  </div>
+
+  <!-- ========== SCREEN 3: GALLERY ========== -->
+  <div id="gallery" class="screen hidden">
+    <h1 class="game-title-small">🏆 My Creatures</h1>
+    <p class="gallery-subtitle">Your collection of hatched creatures</p>
+
+    <div class="gallery-controls">
+      <label for="gallery-sort">Sort by:</label>
+      <select id="gallery-sort" class="gallery-sort-select">
+        <option value="newest">Newest First</option>
+        <option value="oldest">Oldest First</option>
+        <option value="level">Highest Level</option>
+        <option value="name">Name A–Z</option>
+      </select>
+    </div>
+
+    <div id="gallery-grid" class="gallery-grid"></div>
+
+    <p id="gallery-empty" class="gallery-empty hidden">No creatures yet! Hatch some eggs and discard them to see them here. 🥚</p>
+
+    <button id="btn-gallery-back" class="new-creature-btn">⬅️ Back</button>
+  </div>
+
+  <!-- ========== STATUS POPUP ========== -->
+  <div id="status-popup" class="overlay hidden">
+    <div class="popup-card">
+      <h2>📊 Status Report</h2>
+      <div class="popup-stats">
+        <p><strong>Name:</strong> <span id="popup-name"></span></p>
+        <p><strong>Level:</strong> <span id="popup-level"></span></p>
+        <p><strong>Total Clicks:</strong> <span id="popup-clicks"></span></p>
+        <p><strong>Ingredients:</strong></p>
+        <ul id="popup-ingredients"></ul>
+        <p><strong>Next Evolution:</strong> <span id="popup-next"></span></p>
+        <p><strong>Job:</strong> <span id="popup-job"></span></p>
+        <p><strong>Age:</strong> <span id="popup-age"></span></p>
+        <p><strong>Rarity:</strong> <span id="popup-rarity"></span></p>
+        <p><strong>Decay:</strong> <span id="popup-decay">-1 click/hr (paused when needs &gt; 70%)</span></p>
+        <p><strong>Needs:</strong></p>
+        <div id="popup-needs" class="popup-needs"></div>
+      </div>
+      <button id="popup-close" class="action-btn feed-btn">Got it! ✅</button>
+    </div>
+  </div>
+
+  <!-- ========== EVOLUTION OVERLAY ========== -->
+  <div id="evolve-overlay" class="overlay hidden">
+    <div class="hatching-content">
+      <div class="evolve-flash">⚡</div>
+      <p class="hatching-text" id="evolve-text">Your creature is evolving!</p>
+    </div>
+  </div>
+
+  <!-- ========== JOB PICKER OVERLAY ========== -->
+  <div id="job-picker-overlay" class="overlay hidden">
+    <div class="job-picker-panel">
+      <h2 class="job-picker-title">💼 Choose a Path</h2>
+      <p class="job-picker-subtitle">Your creature is about to become legendary! Pick a job to shape their destiny.</p>
+      <div id="job-picker-grid" class="job-picker-grid"></div>
+      <button id="job-picker-no-job" class="job-no-job-btn">🦥 Nah... No Job (Slouch Life)</button>
+    </div>
+  </div>
+
+  <!-- ========== BREEDING OVERLAY ========== -->
+  <div id="breeding-overlay" class="overlay hidden">
+    <div class="breeding-panel">
+      <h2 class="breeding-title">🥚 Breeding Room</h2>
+      <p class="breeding-subtitle">Combine two creatures to create a new one!</p>
+
+      <div class="breeding-slots">
+        <!-- Slot 1: Current Pet (auto-filled) -->
+        <div class="breed-slot filled" id="breed-slot-1">
+          <img id="breed-slot-1-img" class="breed-slot-img" src="" alt="">
+          <span class="breed-slot-name" id="breed-slot-1-name">Your Pet</span>
+        </div>
+
+        <!-- Heart / plus icon in the middle -->
+        <div class="breed-heart">💕</div>
+
+        <!-- Slot 2: Pick from gallery -->
+        <div class="breed-slot empty" id="breed-slot-2">
+          <div class="breed-slot-placeholder" id="breed-slot-2-placeholder">
+            <span class="breed-slot-plus">+</span>
+            <span class="breed-slot-hint">Pick a mate</span>
+          </div>
+          <img id="breed-slot-2-img" class="breed-slot-img hidden" src="" alt="">
+          <span class="breed-slot-name hidden" id="breed-slot-2-name"></span>
+        </div>
+      </div>
+
+      <!-- Breed button -->
+      <button id="btn-breed-go" class="breed-go-btn" disabled>🥚 BREED!</button>
+
+      <!-- Cancel -->
+      <button id="btn-breed-cancel" class="breed-cancel-btn">⬅️ Cancel</button>
+    </div>
+  </div>
+
+  <!-- ========== BREED MATE PICKER (Gallery picker for breeding) ========== -->
+  <div id="breed-picker-overlay" class="overlay hidden">
+    <div class="breed-picker-panel">
+      <h2 class="breeding-title">Choose a Mate</h2>
+      <p class="breeding-subtitle">Pick a creature from your collection</p>
+      <div id="breed-picker-grid" class="breed-picker-grid"></div>
+      <p id="breed-picker-empty" class="gallery-empty hidden">No creatures in your gallery yet! Discard some creatures first. 🥚</p>
+      <button id="btn-breed-picker-cancel" class="breed-cancel-btn">⬅️ Back</button>
+    </div>
+  </div>
+
+  <!-- ========== DISCARD CONFIRM MODAL ========== -->
+  <div id="discard-confirm-overlay" class="overlay hidden">
+    <div class="discard-confirm-card">
+      <p class="discard-confirm-text">Are you sure you want to get rid of this monster?</p>
+      <div class="discard-confirm-buttons">
+        <button id="discard-confirm-yes" class="discard-confirm-btn discard-confirm-yes">Yes, let it go</button>
+        <button id="discard-confirm-no" class="discard-confirm-btn discard-confirm-no">No, keep it!</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ========== BREEDING NAME OVERLAY ========== -->
+  <div id="breed-name-overlay" class="overlay hidden">
+    <div class="breed-name-card">
+      <h2>🥚 Name Your Offspring</h2>
+      <p class="breed-name-subtitle">Your new creature needs a name!</p>
+      <input type="text" id="breed-name-input" placeholder="e.g. Taco-Pup Jr" maxlength="20">
+      <button id="breed-name-confirm" class="hatch-btn" style="font-size:0.8rem;padding:12px 24px;">✨ Confirm Name</button>
+    </div>
+  </div>
+
+  <!-- Hidden canvas for image compression -->
+  <canvas id="compress-canvas" style="display:none;"></canvas>
+
+  <script src="audio.js"></script>
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
