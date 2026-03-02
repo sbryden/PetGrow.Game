@@ -82,6 +82,29 @@ const NEED_ACTION_RESTORE = 25;
 const NEED_WARN_THRESHOLD = 30;
 const NEED_CRITICAL_THRESHOLD = 15;
 
+// ---------- 🧩 SPRITE SLICING CONSTANTS ----------
+const BODY_PART_CLIPS = {
+  head:           [[5,0], [95,0], [98,46], [2,46]],
+  neck:           [[20,32], [80,32], [82,50], [18,50]],
+  leftShoulder:   [[0,22], [38,24], [40,52], [0,50]],
+  leftHand:       [[0,44], [36,44], [36,70], [0,68]],
+  rightShoulder:  [[62,24], [100,22], [100,50], [60,52]],
+  rightHand:      [[64,44], [100,44], [100,68], [64,70]],
+  chest:          [[18,36], [82,36], [84,58], [16,58]],
+  belly:          [[16,50], [84,50], [86,74], [14,74]],
+  leftThigh:      [[4,62], [52,62], [54,86], [2,86]],
+  leftFoot:       [[2,78], [54,78], [54,100], [0,100]],
+  rightThigh:     [[48,62], [96,62], [98,86], [46,86]],
+  rightFoot:      [[46,78], [98,78], [100,100], [46,100]],
+  tail:           [[70,50], [100,38], [100,85], [76,92]],
+};
+
+// In-memory sprite cache — { [level]: { head: dataUrl, neck: dataUrl, ... } }
+const spriteCache = {};
+
+// 1x1 transparent GIF for blanking the base layer
+const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
 // ---------- 🗂️ GAME STATE ----------
 let gameState = {
   ingredients: {
@@ -496,6 +519,7 @@ hatchBtn.addEventListener("click", async () => {
   gameState.clicks = 0;
   gameState.level = LEVEL_BABY;
   gameState.cachedImages = {};
+  Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
   gameState.lastDecayTime = Date.now();
   gameState.createdAt = Date.now();
   gameState.petX = null;
@@ -512,11 +536,19 @@ hatchBtn.addEventListener("click", async () => {
 
   // Phase 1: Egg shaking
   hatchingText.textContent = "Your egg is wobbling...";
+  await sleep(1800);
+
+  // Phase 1.5: Stirring
+  hatchingText.textContent = "Something is stirring inside!";
   await sleep(1500);
 
   // Phase 2: Cracks appearing
   hatchingEgg.textContent = "🪺";
   hatchingText.textContent = "Cracks are forming!";
+  await sleep(1400);
+
+  // Phase 2.5: Light
+  hatchingText.textContent = "A light shines through the shell!";
   await sleep(1200);
 
   // Phase 3: Hatching!
@@ -600,7 +632,7 @@ function buildPrompt(level) {
   if (wildcard) desc += `, featuring a ${wildcard} as part of its body or as an accessory`;
   if (element) desc += `, with a ${element} texture`;
 
-  const prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered and facing the viewer. No text in the image.`;
+  const prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Draw the creature LARGE so it fills at least 80% of the image — do not leave large empty margins. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered, facing the viewer, with its full body visible including all limbs, fins, tentacles, or appendages. No text in the image.`;
 
   return prompt;
 }
@@ -626,8 +658,10 @@ async function generateCreatureImage(level) {
     creatureDesc.textContent = buildDescription();
     // Re-process old cached images that may still have a background
     const clean = await removeImageBackground(gameState.cachedImages[level]);
-    setPetImageSrc(clean);
-    gameState.cachedImages[level] = clean;
+    const cropped = await cropToContent(clean, 512, 512);
+    gameState.cachedImages[level] = cropped;
+    // Slice into per-part sprites and apply
+    await applyCreatureSprites(level, cropped);
     return;
   }
 
@@ -681,15 +715,18 @@ async function generateCreatureImage(level) {
       throw new Error("No image data in response");
     }
 
-    // Remove background, then resize before caching
+    // Remove background, crop to content, then resize before caching
     const dataUrl = `data:${mimeType};base64,${imageBase64}`;
     const noBg = await removeImageBackground(dataUrl);
-    const compressed = await compressImage(noBg, 512, 512);
+    const cropped = await cropToContent(noBg, 512, 512);
+    const compressed = await compressImage(cropped, 512, 512);
 
-    // Display and cache
-    setPetImageSrc(compressed);
-    creatureDesc.textContent = buildDescription();
+    // Cache the full image
     gameState.cachedImages[level] = compressed;
+    creatureDesc.textContent = buildDescription();
+
+    // Slice into per-part sprites and apply
+    await applyCreatureSprites(level, compressed);
     saveGame();
 
   } catch (err) {
@@ -867,7 +904,627 @@ function compressImage(dataUrl, maxW, maxH) {
   });
 }
 
-// ---------- � PET POSITIONING ----------
+// ---------- 🧩 SPRITE SLICING ----------
+
+/**
+ * Crop an image to its visible (opaque) content, add a small margin,
+ * and re-centre / scale it to fill the target dimensions.
+ * This ensures the sprite always fills the full canvas regardless of
+ * how the AI sized or positioned the creature.
+ * Returns a PNG data-URL.
+ */
+function cropToContent(dataUrl, targetW = 512, targetH = 512) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+
+      const srcCanvas = document.createElement("canvas");
+      srcCanvas.width = w;
+      srcCanvas.height = h;
+      const srcCtx = srcCanvas.getContext("2d", { willReadFrequently: true });
+      srcCtx.drawImage(img, 0, 0);
+      const imageData = srcCtx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+
+      // Scan for bounding box of opaque pixels
+      let minX = w, maxX = 0, minY = h, maxY = 0;
+      let found = false;
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (data[(y * w + x) * 4 + 3] > 30) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            found = true;
+          }
+        }
+      }
+
+      if (!found) { resolve(dataUrl); return; }
+
+      const cw = maxX - minX + 1;
+      const ch = maxY - minY + 1;
+
+      // If content already fills most of the canvas, skip cropping
+      if (cw > w * 0.85 && ch > h * 0.85) {
+        resolve(dataUrl);
+        return;
+      }
+
+      // Add ~3 % padding on all sides
+      const pad = Math.max(4, Math.round(Math.max(cw, ch) * 0.03));
+      const sx = Math.max(0, minX - pad);
+      const sy = Math.max(0, minY - pad);
+      const sw = Math.min(w - sx, cw + pad * 2);
+      const sh = Math.min(h - sy, ch + pad * 2);
+
+      // Scale to fill target while keeping aspect ratio
+      const scale = Math.min(targetW / sw, targetH / sh);
+      const dw = Math.round(sw * scale);
+      const dh = Math.round(sh * scale);
+      const dx = Math.round((targetW - dw) / 2);
+      const dy = Math.round((targetH - dh) / 2);
+
+      const outCanvas = document.createElement("canvas");
+      outCanvas.width = targetW;
+      outCanvas.height = targetH;
+      const outCtx = outCanvas.getContext("2d");
+      outCtx.clearRect(0, 0, targetW, targetH);
+      outCtx.drawImage(srcCanvas, sx, sy, sw, sh, dx, dy, dw, dh);
+
+      resolve(outCanvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Ray-casting point-in-polygon test.
+ */
+function pointInPolygon(px, py, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * Analyse a creature image's silhouette and return custom clip polygons
+ * fitted to where the actual body parts ARE, instead of assuming a fixed
+ * humanoid layout.
+ *
+ * Algorithm:
+ *   1. Build a per-row width profile (left edge, right edge, width).
+ *   2. Smooth the profile and find key vertical landmarks:
+ *        • headEndY  — the neck constriction (where width dips)
+ *        • legStartY — the torso→legs transition (center gap or width drop)
+ *   3. In the torso zone, detect arm/fin extensions beyond the core width.
+ *   4. In the lower zone, split left/right leg content.
+ *   5. Detect a tail (asymmetric side extension in the lower body).
+ *   6. Generate 13 clip polygons (same keys as BODY_PART_CLIPS) with
+ *      ~8 % vertical overlap between neighbours.
+ *
+ * Returns  { head: [[x%,y%],...], neck: [...], ... }  or null on failure
+ * (caller should fall back to fixed BODY_PART_CLIPS).
+ */
+function detectBodyClips(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        const raw = ctx.getImageData(0, 0, w, h).data;
+
+        // ---- Alpha map ----
+        const OPAQUE = 30;
+        const alpha = new Uint8Array(w * h);
+        for (let i = 0; i < w * h; i++) alpha[i] = raw[i * 4 + 3];
+
+        // ---- Row profile ----
+        const rowL = new Int32Array(h).fill(w);   // leftmost opaque x
+        const rowR = new Int32Array(h).fill(-1);  // rightmost opaque x
+        const rowW = new Float64Array(h);          // width
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            if (alpha[y * w + x] > OPAQUE) {
+              if (x < rowL[y]) rowL[y] = x;
+              if (x > rowR[y]) rowR[y] = x;
+            }
+          }
+          rowW[y] = rowR[y] >= 0 ? rowR[y] - rowL[y] + 1 : 0;
+        }
+
+        // ---- Creature bounds ----
+        let topY = 0, bottomY = h - 1;
+        for (let y = 0; y < h; y++) { if (rowW[y] > 0) { topY = y; break; } }
+        for (let y = h - 1; y >= 0; y--) { if (rowW[y] > 0) { bottomY = y; break; } }
+        const cH = bottomY - topY + 1;
+        if (cH < 20) { resolve(null); return; }
+
+        // ---- Smooth width profile ----
+        const sr = Math.max(2, Math.round(cH * 0.03));
+        const sW = new Float64Array(h);
+        for (let y = 0; y < h; y++) {
+          let sum = 0, cnt = 0;
+          for (let j = Math.max(0, y - sr); j <= Math.min(h - 1, y + sr); j++) {
+            sum += rowW[j]; cnt++;
+          }
+          sW[y] = sum / cnt;
+        }
+
+        // ---- NECK detection ----
+        const neckLo = topY + Math.round(cH * 0.12);
+        const neckHi = topY + Math.round(cH * 0.50);
+        const neckWin = Math.max(4, Math.round(cH * 0.08));
+
+        let neckY = -1;
+        let neckBest = 1;
+        for (let y = neckLo; y <= neckHi; y++) {
+          let aboveMax = 0, belowMax = 0;
+          for (let dy = 1; dy <= neckWin; dy++) {
+            if (y - dy >= topY  && sW[y - dy] > aboveMax) aboveMax = sW[y - dy];
+            if (y + dy <= bottomY && sW[y + dy] > belowMax) belowMax = sW[y + dy];
+          }
+          const ref = Math.min(aboveMax, belowMax);
+          if (ref > 0) {
+            const ratio = sW[y] / ref;
+            if (ratio < 0.85 && ratio < neckBest) {
+              neckBest = ratio;
+              neckY = y;
+            }
+          }
+        }
+        const headEndY = neckY >= 0 ? neckY : topY + Math.round(cH * 0.28);
+
+        // ---- LEG-SPLIT detection ----
+        const legLo = topY + Math.round(cH * 0.50);
+        const legHi = topY + Math.round(cH * 0.85);
+        let legSplitY = -1;
+
+        // Torso max width for reference
+        let torsoMaxW = 0;
+        for (let y = headEndY; y < legLo; y++) {
+          if (sW[y] > torsoMaxW) torsoMaxW = sW[y];
+        }
+        if (torsoMaxW === 0) torsoMaxW = sW[Math.round((headEndY + legLo) / 2)] || w * 0.4;
+
+        // Method A: center gap (silhouette splits into legs / tentacles)
+        for (let y = legLo; y <= legHi && legSplitY < 0; y++) {
+          if (rowW[y] === 0) continue;
+          const cx = Math.round((rowL[y] + rowR[y]) / 2);
+          const scanR = Math.max(3, Math.round(rowW[y] * 0.10));
+          let gap = 0;
+          for (let x = cx - scanR; x <= cx + scanR; x++) {
+            if (x >= 0 && x < w && alpha[y * w + x] <= OPAQUE) gap++;
+          }
+          if (gap > scanR) legSplitY = y;
+        }
+
+        // Method B: significant width reduction
+        if (legSplitY < 0 && torsoMaxW > 0) {
+          for (let y = legLo; y <= legHi; y++) {
+            if (sW[y] > 0 && sW[y] < torsoMaxW * 0.60) { legSplitY = y; break; }
+          }
+        }
+
+        // Default
+        if (legSplitY < 0) legSplitY = topY + Math.round(cH * 0.62);
+
+        // ---- Zone extents ----
+        function zoneExtent(y0, y1) {
+          let l = w, r = 0, sumCx = 0, n = 0;
+          for (let y = y0; y <= y1; y++) {
+            if (rowW[y] > 0) {
+              if (rowL[y] < l) l = rowL[y];
+              if (rowR[y] > r) r = rowR[y];
+              sumCx += (rowL[y] + rowR[y]) / 2;
+              n++;
+            }
+          }
+          return { left: l < w ? l : 0, right: r >= 0 ? r : w - 1, cx: n > 0 ? sumCx / n : w / 2 };
+        }
+
+        const headZ = zoneExtent(topY, headEndY);
+        const torsoZ = zoneExtent(headEndY, legSplitY);
+        const legZ  = zoneExtent(legSplitY, bottomY);
+        const creatureCx = (headZ.cx + torsoZ.cx + (legZ.cx || torsoZ.cx)) / 3;
+
+        // ---- Core body width (median torso width, excluding arm extensions) ----
+        const tw = [];
+        for (let y = headEndY; y <= legSplitY; y++) { if (rowW[y] > 0) tw.push(rowW[y]); }
+        tw.sort((a, b) => a - b);
+        const medTorsoW = tw.length > 0 ? tw[Math.floor(tw.length / 2)] : w * 0.5;
+        const coreHalf = medTorsoW / 2;
+        const coreL = creatureCx - coreHalf;
+        const coreR = creatureCx + coreHalf;
+
+        // ---- ARM detection (torso zone) ----
+        const armThresh = coreHalf * 0.15;
+        let laMinX = w, laYTop = legSplitY, laYBot = headEndY, hasLA = false;
+        let raMaxX = 0, raYTop = legSplitY, raYBot = headEndY, hasRA = false;
+        for (let y = headEndY; y <= legSplitY; y++) {
+          if (rowW[y] === 0) continue;
+          if (rowL[y] < coreL - armThresh) {
+            hasLA = true;
+            if (rowL[y] < laMinX) laMinX = rowL[y];
+            if (y < laYTop) laYTop = y;
+            if (y > laYBot) laYBot = y;
+          }
+          if (rowR[y] > coreR + armThresh) {
+            hasRA = true;
+            if (rowR[y] > raMaxX) raMaxX = rowR[y];
+            if (y < raYTop) raYTop = y;
+            if (y > raYBot) raYBot = y;
+          }
+        }
+
+        // ---- LEG left/right split ----
+        let llL = w, llR = 0, hasLL = false;
+        let rlL = w, rlR = 0, hasRL = false;
+        const cxI = Math.round(creatureCx);
+        for (let y = legSplitY; y <= bottomY; y++) {
+          if (rowW[y] === 0) continue;
+          for (let x = rowL[y]; x < cxI; x++) {
+            if (alpha[y * w + x] > OPAQUE) {
+              hasLL = true;
+              if (x < llL) llL = x;
+              if (x > llR) llR = x;
+            }
+          }
+          for (let x = cxI; x <= rowR[y]; x++) {
+            if (alpha[y * w + x] > OPAQUE) {
+              hasRL = true;
+              if (x < rlL) rlL = x;
+              if (x > rlR) rlR = x;
+            }
+          }
+        }
+
+        // ---- TAIL detection (asymmetric extension, lower half) ----
+        const tailSearchY = topY + Math.round(cH * 0.45);
+        let tL = w, tR = 0, tYTop = bottomY, tYBot = topY, hasTail = false;
+        for (let y = tailSearchY; y <= bottomY; y++) {
+          if (rowW[y] === 0) continue;
+          if (rowR[y] > coreR + coreHalf * 0.30) {
+            hasTail = true;
+            if (y < tYTop) tYTop = y;
+            if (y > tYBot) tYBot = y;
+            if (rowR[y] > tR) tR = rowR[y];
+            tL = Math.min(tL, Math.round(coreR));
+          }
+        }
+
+        // ---- Percentage helpers (clamp 0-100) ----
+        const PX = (v) => Math.max(0, Math.min(100, (v / w) * 100));
+        const PY = (v) => Math.max(0, Math.min(100, (v / h) * 100));
+        const OV  = Math.round(h * 0.08);  // overlap in pixels (~8 % of image)
+
+        const chestBotY = Math.round((headEndY + legSplitY) / 2);
+
+        // ---- BUILD CLIPS ----
+        const clips = {};
+
+        // HEAD
+        clips.head = [
+          [PX(headZ.left - 4),  PY(topY - 2)],
+          [PX(headZ.right + 4), PY(topY - 2)],
+          [PX(headZ.right + 6), PY(headEndY + OV)],
+          [PX(headZ.left - 6),  PY(headEndY + OV)],
+        ];
+
+        // NECK
+        const nL = Math.min(headZ.left, torsoZ.left);
+        const nR = Math.max(headZ.right, torsoZ.right);
+        const nInset = (nR - nL) * 0.12;
+        clips.neck = [
+          [PX(nL + nInset),     PY(headEndY - OV)],
+          [PX(nR - nInset),     PY(headEndY - OV)],
+          [PX(nR - nInset * 0.8), PY(headEndY + OV * 1.5)],
+          [PX(nL + nInset * 0.8), PY(headEndY + OV * 1.5)],
+        ];
+
+        // CHEST  (upper torso)
+        clips.chest = [
+          [PX(coreL - 4), PY(headEndY - OV * 0.5)],
+          [PX(coreR + 4), PY(headEndY - OV * 0.5)],
+          [PX(coreR + 6), PY(chestBotY + OV)],
+          [PX(coreL - 6), PY(chestBotY + OV)],
+        ];
+
+        // BELLY  (lower torso)
+        clips.belly = [
+          [PX(coreL - 6), PY(chestBotY - OV)],
+          [PX(coreR + 6), PY(chestBotY - OV)],
+          [PX(coreR + 8), PY(legSplitY + OV)],
+          [PX(coreL - 8), PY(legSplitY + OV)],
+        ];
+
+        // LEFT SHOULDER + HAND
+        if (hasLA) {
+          const aMid = Math.round((laYTop + laYBot) / 2);
+          clips.leftShoulder = [
+            [PX(laMinX - 2),             PY(laYTop - OV * 0.5)],
+            [PX(coreL + coreHalf * 0.20), PY(laYTop - OV * 0.3)],
+            [PX(coreL + coreHalf * 0.25), PY(aMid + OV)],
+            [PX(laMinX - 2),             PY(aMid + OV * 0.8)],
+          ];
+          clips.leftHand = [
+            [PX(laMinX - 2),             PY(aMid - OV)],
+            [PX(coreL + coreHalf * 0.15), PY(aMid - OV * 0.8)],
+            [PX(coreL + coreHalf * 0.20), PY(laYBot + OV)],
+            [PX(laMinX - 2),             PY(laYBot + OV * 0.5)],
+          ];
+        } else {
+          clips.leftShoulder = [[0, PY(headEndY)], [PX(coreL), PY(headEndY)], [PX(coreL), PY(chestBotY)], [0, PY(chestBotY)]];
+          clips.leftHand     = [[0, PY(chestBotY)], [PX(coreL), PY(chestBotY)], [PX(coreL), PY(legSplitY)], [0, PY(legSplitY)]];
+        }
+
+        // RIGHT SHOULDER + HAND
+        if (hasRA) {
+          const aMid = Math.round((raYTop + raYBot) / 2);
+          clips.rightShoulder = [
+            [PX(coreR - coreHalf * 0.20), PY(raYTop - OV * 0.3)],
+            [PX(raMaxX + 2),             PY(raYTop - OV * 0.5)],
+            [PX(raMaxX + 2),             PY(aMid + OV * 0.8)],
+            [PX(coreR - coreHalf * 0.25), PY(aMid + OV)],
+          ];
+          clips.rightHand = [
+            [PX(coreR - coreHalf * 0.15), PY(aMid - OV * 0.8)],
+            [PX(raMaxX + 2),             PY(aMid - OV)],
+            [PX(raMaxX + 2),             PY(raYBot + OV * 0.5)],
+            [PX(coreR - coreHalf * 0.20), PY(raYBot + OV)],
+          ];
+        } else {
+          clips.rightShoulder = [[PX(coreR), PY(headEndY)], [100, PY(headEndY)], [100, PY(chestBotY)], [PX(coreR), PY(chestBotY)]];
+          clips.rightHand     = [[PX(coreR), PY(chestBotY)], [100, PY(chestBotY)], [100, PY(legSplitY)], [PX(coreR), PY(legSplitY)]];
+        }
+
+        // LEFT THIGH + FOOT
+        const legMidY = Math.round((legSplitY + bottomY) / 2);
+        if (hasLL) {
+          clips.leftThigh = [
+            [PX(llL - 2), PY(legSplitY - OV)],
+            [PX(cxI + 4), PY(legSplitY - OV)],
+            [PX(cxI + 6), PY(legMidY + OV)],
+            [PX(llL - 2), PY(legMidY + OV)],
+          ];
+          clips.leftFoot = [
+            [PX(llL - 2), PY(legMidY - OV)],
+            [PX(cxI + 6), PY(legMidY - OV)],
+            [PX(cxI + 6), PY(bottomY + 4)],
+            [PX(llL - 2), PY(bottomY + 4)],
+          ];
+        } else {
+          clips.leftThigh = [[PX(legZ.left - 2), PY(legSplitY - OV)], [50, PY(legSplitY - OV)], [50, PY(legMidY + OV)], [PX(legZ.left - 2), PY(legMidY + OV)]];
+          clips.leftFoot  = [[PX(legZ.left - 2), PY(legMidY - OV)],   [50, PY(legMidY - OV)],   [50, PY(bottomY + 4)],   [PX(legZ.left - 2), PY(bottomY + 4)]];
+        }
+
+        // RIGHT THIGH + FOOT
+        if (hasRL) {
+          clips.rightThigh = [
+            [PX(cxI - 4), PY(legSplitY - OV)],
+            [PX(rlR + 2), PY(legSplitY - OV)],
+            [PX(rlR + 2), PY(legMidY + OV)],
+            [PX(cxI - 6), PY(legMidY + OV)],
+          ];
+          clips.rightFoot = [
+            [PX(cxI - 6), PY(legMidY - OV)],
+            [PX(rlR + 2), PY(legMidY - OV)],
+            [PX(rlR + 2), PY(bottomY + 4)],
+            [PX(cxI - 6), PY(bottomY + 4)],
+          ];
+        } else {
+          clips.rightThigh = [[50, PY(legSplitY - OV)], [PX(legZ.right + 2), PY(legSplitY - OV)], [PX(legZ.right + 2), PY(legMidY + OV)], [50, PY(legMidY + OV)]];
+          clips.rightFoot  = [[50, PY(legMidY - OV)],   [PX(legZ.right + 2), PY(legMidY - OV)],   [PX(legZ.right + 2), PY(bottomY + 4)],   [50, PY(bottomY + 4)]];
+        }
+
+        // TAIL
+        if (hasTail) {
+          clips.tail = [
+            [PX(tL),     PY(tYTop - OV * 0.5)],
+            [PX(tR + 4), PY(tYTop - OV)],
+            [PX(tR + 4), PY(tYBot + OV * 0.5)],
+            [PX(tL),     PY(tYBot + OV)],
+          ];
+        } else {
+          clips.tail = [
+            [PX(coreR),          PY(legSplitY - OV)],
+            [PX(torsoZ.right + 6), PY(legSplitY - OV * 2)],
+            [PX(torsoZ.right + 6), PY(bottomY)],
+            [PX(coreR),          PY(bottomY)],
+          ];
+        }
+
+        console.log("Detected body clips — head ends at", Math.round(PY(headEndY)) + "%,",
+          "legs start at", Math.round(PY(legSplitY)) + "%,",
+          "leftArm:", hasLA, "rightArm:", hasRA, "tail:", hasTail);
+
+        resolve(clips);
+
+      } catch (e) {
+        console.warn("Body detection failed, falling back to defaults:", e);
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Slice a full creature image into individual body-part sprites.
+ * Each sprite is a full-size transparent PNG containing only the pixels
+ * inside that part's clip-path polygon.
+ *
+ * Accepts optional custom clip polygons (from detectBodyClips); falls back
+ * to the static BODY_PART_CLIPS if none are provided.
+ *
+ * Parts with too few opaque pixels are replaced with a transparent
+ * placeholder so they don't render as weird artefacts.
+ *
+ * Returns an object  { head: dataUrl, neck: dataUrl, … }  or null on error.
+ */
+function sliceIntoSprites(fullDataUrl, customClips) {
+  const clipDefs = customClips || BODY_PART_CLIPS;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+
+      // ---- read source alpha once ----
+      const srcCanvas = document.createElement("canvas");
+      srcCanvas.width = w;
+      srcCanvas.height = h;
+      const srcCtx = srcCanvas.getContext("2d", { willReadFrequently: true });
+      srcCtx.drawImage(img, 0, 0);
+      const srcAlpha = new Uint8Array(w * h);
+      {
+        const sd = srcCtx.getImageData(0, 0, w, h).data;
+        for (let i = 0; i < w * h; i++) srcAlpha[i] = sd[i * 4 + 3];
+      }
+
+      const clipCanvas = document.createElement("canvas");
+      clipCanvas.width = w;
+      clipCanvas.height = h;
+      const clipCtx = clipCanvas.getContext("2d");
+
+      const sprites = {};
+
+      // Minimum fraction of opaque pixels inside a part to count as content
+      const MIN_CONTENT = 0.004; // 0.4 %
+
+      for (const [partName, polygon] of Object.entries(clipDefs)) {
+        // Convert percentages → pixel coords
+        const pxPoly = polygon.map(([px, py]) => [(px / 100) * w, (py / 100) * h]);
+
+        // Bounding box of this polygon (for fast scan)
+        const xs = pxPoly.map(p => p[0]);
+        const ys = pxPoly.map(p => p[1]);
+        const bx0 = Math.max(0, Math.floor(Math.min(...xs)));
+        const by0 = Math.max(0, Math.floor(Math.min(...ys)));
+        const bx1 = Math.min(w - 1, Math.ceil(Math.max(...xs)));
+        const by1 = Math.min(h - 1, Math.ceil(Math.max(...ys)));
+
+        // Count opaque pixels inside polygon
+        let opaque = 0, total = 0;
+        for (let y = by0; y <= by1; y++) {
+          for (let x = bx0; x <= bx1; x++) {
+            if (pointInPolygon(x, y, pxPoly)) {
+              total++;
+              if (srcAlpha[y * w + x] > 30) opaque++;
+            }
+          }
+        }
+
+        // Skip parts that contain (almost) nothing visible
+        if (total === 0 || opaque / total < MIN_CONTENT) {
+          sprites[partName] = TRANSPARENT_PIXEL;
+          continue;
+        }
+
+        // ---- clip & render ----
+        clipCtx.clearRect(0, 0, w, h);
+        clipCtx.save();
+        clipCtx.beginPath();
+        clipCtx.moveTo(pxPoly[0][0], pxPoly[0][1]);
+        for (let i = 1; i < pxPoly.length; i++) {
+          clipCtx.lineTo(pxPoly[i][0], pxPoly[i][1]);
+        }
+        clipCtx.closePath();
+        clipCtx.clip();
+        clipCtx.drawImage(img, 0, 0);
+        clipCtx.restore();
+
+        sprites[partName] = clipCanvas.toDataURL("image/png");
+      }
+
+      resolve(sprites);
+    };
+    img.onerror = () => resolve(null);
+    img.src = fullDataUrl;
+  });
+}
+
+/** Apply per-part sprite images to the pet. Base layer becomes transparent. */
+function setPetSprites(sprites) {
+  // Base gets transparent — individual parts handle all rendering
+  petImgBase.src = TRANSPARENT_PIXEL;
+
+  for (const [partKey, img] of Object.entries(petImgs)) {
+    if (sprites[partKey]) {
+      img.src = sprites[partKey];
+    }
+  }
+}
+
+/**
+ * Set inline CSS clip-path on each body-part <img> so the visual mask
+ * matches the detected (or fallback) polygons.
+ * Pass null to clear inline styles and revert to the CSS-class clip-paths.
+ */
+function applyClipPathCSS(clips) {
+  for (const [partKey, imgEl] of Object.entries(petImgs)) {
+    if (clips && clips[partKey]) {
+      const pts = clips[partKey].map(([x, y]) => `${x}% ${y}%`).join(", ");
+      imgEl.style.clipPath = `polygon(${pts})`;
+    } else {
+      imgEl.style.clipPath = "";  // fall back to class-based clip-path
+    }
+  }
+
+  // Position eyelid inside the detected head region
+  if (clips && clips.head) {
+    const hd = clips.head;
+    const eyeT = hd[0][1] + (hd[2][1] - hd[0][1]) * 0.35;
+    const eyeB = hd[0][1] + (hd[2][1] - hd[0][1]) * 0.65;
+    const eyeL = hd[0][0] + (hd[1][0] - hd[0][0]) * 0.15;
+    const eyeR = hd[1][0] - (hd[1][0] - hd[0][0]) * 0.15;
+    petEyelid.style.clipPath = `polygon(${eyeL}% ${eyeT}%, ${eyeR}% ${eyeT}%, ${eyeR}% ${eyeB}%, ${eyeL}% ${eyeB}%)`;
+  } else {
+    petEyelid.style.clipPath = "";
+  }
+}
+
+/**
+ * Detect body parts, slice a full creature image into sprites,
+ * cache them, apply to the DOM, and set matching CSS clip-paths.
+ * Falls back to the static clip layout if detection fails.
+ */
+async function applyCreatureSprites(level, dataUrl) {
+  const detectedClips = await detectBodyClips(dataUrl);
+  const sprites = await sliceIntoSprites(dataUrl, detectedClips);
+  if (sprites) {
+    spriteCache[level] = sprites;
+    setPetSprites(sprites);
+    applyClipPathCSS(detectedClips);
+  } else {
+    // Fallback to full image on all parts
+    setPetImageSrc(dataUrl);
+    applyClipPathCSS(null);
+  }
+}
+
+// ---------- 🏠 PET POSITIONING ----------
 const PET_SIZE = 180; // matches CSS .pet-parts width/height
 const PET_SIZE_SMALL = 150; // matches CSS responsive .pet-parts
 
@@ -1017,19 +1674,29 @@ async function triggerEvolution(newLevel) {
   evolveOverlay.style.display = "flex";
   PetAudio.play('evolve');
 
-  if (newLevel === LEVEL_TEEN) {
-    evolveText.textContent = "Evolving into a Teenager!";
-  } else if (newLevel === LEVEL_LEGEND) {
-    evolveText.textContent = "LEGENDARY EVOLUTION!";
-  } else {
-    evolveText.textContent = "Your creature is changing...";
-  }
-
   // Start generating the image in the background (runs in parallel with animation)
   suppressSpinner = true;
   const imagePromise = generateCreatureImage(newLevel);
 
-  await sleep(2000);
+  // Extended narrative text to cover image generation + sprite slicing
+  if (newLevel === LEVEL_TEEN) {
+    evolveText.textContent = "Evolving into a Teenager!";
+    await sleep(1500);
+    evolveText.textContent = "Energy surges through your creature...";
+    await sleep(1500);
+    evolveText.textContent = "Its form is shifting and growing!";
+    await sleep(1500);
+  } else if (newLevel === LEVEL_LEGEND) {
+    evolveText.textContent = "LEGENDARY EVOLUTION!";
+    await sleep(1500);
+    evolveText.textContent = "Ancient power awakens within...";
+    await sleep(1500);
+    evolveText.textContent = "A LEGEND IS BORN!";
+    await sleep(1500);
+  } else {
+    evolveText.textContent = "Your creature is changing...";
+    await sleep(2000);
+  }
 
   // Wait for image — if API is slow, the evolution text stays visible
   try {
@@ -1114,8 +1781,17 @@ async function checkDevolution() {
     gameState.level = newLevel;
 
     // Load cached image for this level (it was generated before)
-    if (gameState.cachedImages[newLevel]) {
+    if (spriteCache[newLevel]) {
+      setPetSprites(spriteCache[newLevel]);
+    } else if (gameState.cachedImages[newLevel]) {
       setPetImageSrc(gameState.cachedImages[newLevel]);
+      // Async slice for better display
+      sliceIntoSprites(gameState.cachedImages[newLevel]).then(sprites => {
+        if (sprites) {
+          spriteCache[newLevel] = sprites;
+          setPetSprites(sprites);
+        }
+      });
     }
 
     updateGameDisplay();
@@ -1698,9 +2374,191 @@ async function renderGallery() {
     if (creature.level === LEVEL_TEEN) badge.classList.add("teenager");
     card.appendChild(badge);
 
+    // Equip button
+    const equipBtn = document.createElement("button");
+    equipBtn.className = "gallery-equip-btn";
+    equipBtn.textContent = "🐾 Equip";
+    equipBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      equipPet(creature);
+    });
+    card.appendChild(equipBtn);
+
+    // Click card to view detail
+    card.addEventListener("click", () => {
+      openGalleryDetail(creature);
+    });
+    card.style.cursor = "pointer";
+
     galleryGrid.appendChild(card);
   });
 }
+
+// ---------- 🐾 EQUIP PET FROM GALLERY ----------
+async function equipPet(creature) {
+  // Save current pet to gallery if it exists
+  if (gameState.createdAt && gameState.petName) {
+    await saveToGallery();
+  }
+
+  // Delete the creature from gallery (it's now active)
+  if (creature.id) {
+    await PetDB.deleteCreature(creature.id);
+  }
+
+  // Load creature data into gameState
+  gameState.ingredients = creature.ingredients ? { ...creature.ingredients } : { animal: null, color: null, wildcard: null, element: null };
+  gameState.petName = creature.petName || "Pet";
+  gameState.clicks = creature.clicks || 0;
+  gameState.level = creature.level || LEVEL_BABY;
+  gameState.cachedImages = creature.cachedImages ? { ...creature.cachedImages } : {};
+  gameState.createdAt = creature.createdAt || Date.now();
+  gameState.lastDecayTime = Date.now();
+  gameState.petX = null;
+  gameState.petY = null;
+  gameState.currentRoom = "feeding";
+  gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
+  gameState.lastNeedDecayTime = Date.now();
+  gameState.job = creature.job || null;
+  gameState.parentJobs = creature.parentJobs || [];
+  gameState.bgCleaned = {};
+
+  // Clear sprite cache
+  Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
+
+  // Restore the pet image
+  if (gameState.cachedImages[gameState.level]) {
+    const raw = gameState.cachedImages[gameState.level];
+    setPetImageSrc(raw);
+
+    // Process bg removal + slice into sprites
+    const processAndSlice = async (imgData) => {
+      const sprites = await sliceIntoSprites(imgData);
+      if (sprites) {
+        spriteCache[gameState.level] = sprites;
+        setPetSprites(sprites);
+      }
+    };
+
+    removeImageBackground(raw).then(async (clean) => {
+      gameState.cachedImages[gameState.level] = clean;
+      if (!gameState.bgCleaned) gameState.bgCleaned = {};
+      gameState.bgCleaned[gameState.level] = true;
+      saveGame();
+      await processAndSlice(clean);
+    });
+  }
+
+  creatureDesc.textContent = buildDescription();
+
+  // Switch to pet game screen
+  closeGalleryDetail();
+  showScreen("pet-game");
+  positionPet();
+  switchRoom(gameState.currentRoom);
+  updateGameDisplay();
+  saveGame();
+  startDecayTimer();
+  startIdleFidgets();
+  startNeedDecayTimer();
+
+  console.log("🐾 Equipped pet from gallery:", gameState.petName);
+}
+
+// ---------- 🔍 GALLERY DETAIL OVERLAY ----------
+const galleryDetailOverlay = $("gallery-detail-overlay");
+const galleryDetailClose = $("gallery-detail-close");
+const galleryDetailBack = $("gallery-detail-back");
+const galleryDetailEquip = $("gallery-detail-equip");
+let galleryDetailCreature = null;
+
+function openGalleryDetail(creature) {
+  galleryDetailCreature = creature;
+  const stageEmojis = { [LEVEL_BABY]: "🍼", [LEVEL_TEEN]: "💥", [LEVEL_LEGEND]: "👑" };
+  const allStages = [LEVEL_BABY, LEVEL_TEEN, LEVEL_LEGEND];
+
+  // Name
+  $("gallery-detail-name").textContent = creature.petName;
+
+  // Rarity
+  if (creature.ingredients) {
+    const rarity = calculateRarity(creature.ingredients);
+    const badge = $("gallery-detail-rarity");
+    badge.textContent = `⭐ ${rarity.name}`;
+    badge.className = `rarity-badge ${rarity.cls}`;
+  }
+
+  // Level
+  $("gallery-detail-level").textContent = `${stageEmojis[creature.level] || ""} ${creature.level}`;
+
+  // Clicks
+  $("gallery-detail-clicks").textContent = creature.clicks || 0;
+
+  // Job
+  const job = creature.job ? PET_JOBS.find(j => j.id === creature.job) : null;
+  $("gallery-detail-job").textContent = job ? `${job.emoji} ${job.name}` : "None";
+
+  // Ingredients
+  const tagsEl = $("gallery-detail-tags");
+  tagsEl.innerHTML = "";
+  const labels = { animal: "🐾", color: "🎨", wildcard: "🃏", element: "✨" };
+  for (const [key, emoji] of Object.entries(labels)) {
+    if (creature.ingredients && creature.ingredients[key]) {
+      const tag = document.createElement("span");
+      tag.className = "gallery-tag";
+      tag.textContent = `${emoji} ${creature.ingredients[key]}`;
+      tagsEl.appendChild(tag);
+    }
+  }
+
+  // Stage images
+  const stagesEl = $("gallery-detail-stages");
+  stagesEl.innerHTML = "";
+  allStages.forEach((stage) => {
+    const slot = document.createElement("div");
+    const hasImage = creature.cachedImages && creature.cachedImages[stage];
+    if (hasImage) {
+      slot.className = "gallery-detail-stage unlocked";
+      const img = document.createElement("img");
+      img.src = creature.cachedImages[stage];
+      img.alt = `${creature.petName} - ${stage}`;
+      slot.appendChild(img);
+    } else {
+      slot.className = "gallery-detail-stage locked";
+      const lock = document.createElement("div");
+      lock.className = "gallery-lock-icon";
+      lock.textContent = "🔒";
+      slot.appendChild(lock);
+    }
+    const label = document.createElement("span");
+    label.className = "gallery-stage-label";
+    label.textContent = `${stageEmojis[stage]} ${stage}`;
+    slot.appendChild(label);
+    stagesEl.appendChild(slot);
+  });
+
+  galleryDetailOverlay.classList.remove("hidden");
+  galleryDetailOverlay.style.display = "flex";
+}
+
+function closeGalleryDetail() {
+  galleryDetailOverlay.style.display = "none";
+  galleryDetailOverlay.classList.add("hidden");
+  galleryDetailCreature = null;
+}
+
+galleryDetailClose.addEventListener("click", closeGalleryDetail);
+galleryDetailBack.addEventListener("click", closeGalleryDetail);
+galleryDetailOverlay.addEventListener("click", (e) => {
+  if (e.target === galleryDetailOverlay) closeGalleryDetail();
+});
+galleryDetailEquip.addEventListener("click", () => {
+  if (!galleryDetailCreature) return;
+  if (gameState.createdAt && gameState.petName) {
+    if (!confirm(`Equip ${galleryDetailCreature.petName}? Your current pet (${gameState.petName}) will be saved to the gallery.`)) return;
+  }
+  equipPet(galleryDetailCreature);
+});
 
 // ---------- ⏰ HOURLY DECAY ----------
 let decayTimer = null;
@@ -2381,6 +3239,7 @@ btnBreedGo.addEventListener("click", async () => {
   gameState.clicks = 0;
   gameState.level = LEVEL_BABY;
   gameState.cachedImages = {};
+  Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
   gameState.lastDecayTime = Date.now();
   gameState.createdAt = Date.now();
   gameState.petX = null;
@@ -2396,19 +3255,25 @@ btnBreedGo.addEventListener("click", async () => {
   const imagePromise = generateCreatureImage(LEVEL_BABY);
 
   hatchingText.textContent = "Mixing the two creatures...";
+  await sleep(1800);
+
+  hatchingText.textContent = "Their essences are merging!";
   await sleep(1500);
 
   hatchingEgg.textContent = "💕";
   hatchingText.textContent = "A new egg is forming!";
-  await sleep(1200);
+  await sleep(1400);
 
   hatchingEgg.textContent = "🥚";
+  hatchingText.textContent = "The egg glows with new life!";
+  await sleep(1200);
+
   hatchingText.textContent = "Cracks are appearing!";
-  await sleep(800);
+  await sleep(1000);
 
   hatchingEgg.textContent = "💥";
   hatchingText.textContent = "IT'S HATCHING!";
-  await sleep(800);
+  await sleep(1000);
 
   hatchingEgg.textContent = "✨";
   try {
@@ -2576,17 +3441,27 @@ async function init() {
     // Load cached image for current level, stripping any leftover background
     if (gameState.cachedImages[gameState.level]) {
       const raw = gameState.cachedImages[gameState.level];
-      setPetImageSrc(raw); // show immediately
+      setPetImageSrc(raw); // show immediately with full image
+
+      // Process: bg removal if needed, then slice into per-part sprites
+      const processAndSlice = async (imgData) => {
+        const sprites = await sliceIntoSprites(imgData);
+        if (sprites) {
+          spriteCache[gameState.level] = sprites;
+          setPetSprites(sprites);
+        }
+      };
 
       if (gameState.bgCleaned && gameState.bgCleaned[gameState.level]) {
-        // Already cleaned — skip expensive bg removal
+        // Already cleaned — just slice into sprites
+        processAndSlice(raw);
       } else {
-        removeImageBackground(raw).then((clean) => {
-          setPetImageSrc(clean);
+        removeImageBackground(raw).then(async (clean) => {
           gameState.cachedImages[gameState.level] = clean;
           if (!gameState.bgCleaned) gameState.bgCleaned = {};
           gameState.bgCleaned[gameState.level] = true;
           saveGame();
+          await processAndSlice(clean);
         });
       }
     }
