@@ -1,7 +1,7 @@
 // ============================================================
 //  PetGrow — Service Worker (Offline / PWA support)
 // ============================================================
-const CACHE_NAME = 'petgrow-v1';
+const CACHE_NAME = 'petgrow-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -49,8 +49,12 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // Cache-first for local assets
+  // Network-first for local assets (try network, fall back to cache)
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    fetch(e.request).then(response => {
+      const clone = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+      return response;
+    }).catch(() => caches.match(e.request))
   );
 });

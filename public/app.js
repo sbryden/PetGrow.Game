@@ -765,7 +765,7 @@ function removeImageBackground(dataUrl) {
       const data = imageData.data;
 
       // --- Tolerance-based colour match ---
-      const TOLERANCE = 45;
+      const TOLERANCE = 55;
       function colorsMatch(r1, g1, b1, r2, g2, b2) {
         return (
           Math.abs(r1 - r2) <= TOLERANCE &&
@@ -874,6 +874,56 @@ function removeImageBackground(dataUrl) {
         }
         if (found === 0) break; // no new seeds — done
         floodFill();
+      }
+
+      // --- Defringe: remove magenta colour contamination from edge pixels ---
+      // Anti-aliased pixels at the sprite boundary are a blend of the creature
+      // colour and the magenta background.  We estimate how much magenta is
+      // "mixed in" and either make the pixel fully transparent (mostly bg) or
+      // subtract the magenta tint (partially bg).
+      const DEFRINGE_PASSES = 3;
+      for (let dp = 0; dp < DEFRINGE_PASSES; dp++) {
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            const i = y * w + x;
+            const idx4 = i * 4;
+            const a = data[idx4 + 3];
+            if (a === 0) continue; // already transparent
+
+            // Only process pixels adjacent to at least one transparent pixel
+            const neighborTransparent =
+              data[(i - 1) * 4 + 3] === 0 ||
+              data[(i + 1) * 4 + 3] === 0 ||
+              data[(i - w) * 4 + 3] === 0 ||
+              data[(i + w) * 4 + 3] === 0;
+            if (!neighborTransparent) continue;
+
+            const r = data[idx4], g = data[idx4 + 1], b = data[idx4 + 2];
+
+            // Magenta has high R, low G, high B.  Estimate how "magenta-like"
+            // this pixel is.  Pure magenta = (255, 0, 255).
+            // magentaness: 0 = not magenta, 1 = pure magenta
+            const magR = r / 255;
+            const magB = b / 255;
+            const magG = 1 - (g / 255); // invert green channel
+            const magentaness = Math.min(magR, magB, magG);
+
+            if (magentaness > 0.55) {
+              // Mostly magenta fringe — make transparent
+              data[idx4 + 3] = 0;
+            } else if (magentaness > 0.2) {
+              // Partially contaminated — reduce alpha proportionally and
+              // try to subtract the magenta tint from the colour channels.
+              const factor = (magentaness - 0.2) / 0.35; // 0..1
+              const newAlpha = Math.round(a * (1 - factor * 0.7));
+              // Pull R and B down toward what they'd be without magenta bleed
+              const pull = factor * 0.5;
+              data[idx4]     = Math.round(r * (1 - pull) + r * pull * (1 - magentaness));
+              data[idx4 + 2] = Math.round(b * (1 - pull) + b * pull * (1 - magentaness));
+              data[idx4 + 3] = Math.max(0, newAlpha);
+            }
+          }
+        }
       }
 
       ctx.putImageData(imageData, 0, 0);
@@ -999,368 +1049,429 @@ function pointInPolygon(px, py, polygon) {
 }
 
 /**
- * Analyse a creature image's silhouette and return custom clip polygons
- * fitted to where the actual body parts ARE, instead of assuming a fixed
- * humanoid layout.
+ * Pixel-level body-part detection and sprite creation.
  *
- * Algorithm:
- *   1. Build a per-row width profile (left edge, right edge, width).
- *   2. Smooth the profile and find key vertical landmarks:
- *        • headEndY  — the neck constriction (where width dips)
- *        • legStartY — the torso→legs transition (center gap or width drop)
- *   3. In the torso zone, detect arm/fin extensions beyond the core width.
- *   4. In the lower zone, split left/right leg content.
- *   5. Detect a tail (asymmetric side extension in the lower body).
- *   6. Generate 13 clip polygons (same keys as BODY_PART_CLIPS) with
- *      ~8 % vertical overlap between neighbours.
+ * Instead of cutting the image with rectangular polygons, this function
+ * analyses the creature's silhouette to find its actual anatomy:
  *
- * Returns  { head: [[x%,y%],...], neck: [...], ... }  or null on failure
- * (caller should fall back to fixed BODY_PART_CLIPS).
+ *   1. Build a distance-from-edge map (how deep each pixel is inside the body).
+ *   2. Threshold to separate the thick "core" mass from thin "appendages."
+ *   3. Label each connected appendage cluster.
+ *   4. Classify clusters by position: head, arms/fins, legs/tentacles, tail.
+ *   5. Divide the core vertically: head zone → neck → chest → belly.
+ *   6. Create per-part sprites where each pixel belongs to exactly one part,
+ *      plus a 2-pixel overlap bleed to hide seams during animation.
+ *
+ * Returns  { sprites: { head: dataUrl, … }, centers: { head: [cx%, cy%], … },
+ *            boxes: { head: { minX%, maxX%, minY%, maxY% }, … } }
+ * or null on failure.
  */
-function detectBodyClips(dataUrl) {
+function detectAndSliceSprites(dataUrl) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       try {
         const w = img.naturalWidth;
         const h = img.naturalHeight;
+        const N = w * h;
 
         const canvas = document.createElement("canvas");
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         ctx.drawImage(img, 0, 0);
-        const raw = ctx.getImageData(0, 0, w, h).data;
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const rgba = imageData.data;
 
-        // ---- Alpha map ----
-        const OPAQUE = 30;
-        const alpha = new Uint8Array(w * h);
-        for (let i = 0; i < w * h; i++) alpha[i] = raw[i * 4 + 3];
+        // ── 1. Alpha mask ──
+        const OPAQUE_THRESH = 30;
+        const opaque = new Uint8Array(N);
+        let opaqueCount = 0;
+        for (let i = 0; i < N; i++) {
+          if (rgba[i * 4 + 3] > OPAQUE_THRESH) { opaque[i] = 1; opaqueCount++; }
+        }
+        if (opaqueCount < 100) { resolve(null); return; }
 
-        // ---- Row profile ----
-        const rowL = new Int32Array(h).fill(w);   // leftmost opaque x
-        const rowR = new Int32Array(h).fill(-1);  // rightmost opaque x
-        const rowW = new Float64Array(h);          // width
+        // ── 2. Distance transform (Chebyshev / 8-connected BFS) ──
+        const dist = new Int32Array(N);
+        dist.fill(-1);
+        const queue = new Int32Array(N); // fixed-size ring buffer
+        let qHead = 0, qTail = 0;
 
-        for (let y = 0; y < h; y++) {
-          for (let x = 0; x < w; x++) {
-            if (alpha[y * w + x] > OPAQUE) {
-              if (x < rowL[y]) rowL[y] = x;
-              if (x > rowR[y]) rowR[y] = x;
-            }
-          }
-          rowW[y] = rowR[y] >= 0 ? rowR[y] - rowL[y] + 1 : 0;
+        for (let i = 0; i < N; i++) {
+          if (!opaque[i]) { dist[i] = 0; queue[qTail++] = i; }
         }
 
-        // ---- Creature bounds ----
-        let topY = 0, bottomY = h - 1;
-        for (let y = 0; y < h; y++) { if (rowW[y] > 0) { topY = y; break; } }
-        for (let y = h - 1; y >= 0; y--) { if (rowW[y] > 0) { bottomY = y; break; } }
-        const cH = bottomY - topY + 1;
-        if (cH < 20) { resolve(null); return; }
-
-        // ---- Smooth width profile ----
-        const sr = Math.max(2, Math.round(cH * 0.03));
-        const sW = new Float64Array(h);
-        for (let y = 0; y < h; y++) {
-          let sum = 0, cnt = 0;
-          for (let j = Math.max(0, y - sr); j <= Math.min(h - 1, y + sr); j++) {
-            sum += rowW[j]; cnt++;
-          }
-          sW[y] = sum / cnt;
-        }
-
-        // ---- NECK detection ----
-        const neckLo = topY + Math.round(cH * 0.12);
-        const neckHi = topY + Math.round(cH * 0.50);
-        const neckWin = Math.max(4, Math.round(cH * 0.08));
-
-        let neckY = -1;
-        let neckBest = 1;
-        for (let y = neckLo; y <= neckHi; y++) {
-          let aboveMax = 0, belowMax = 0;
-          for (let dy = 1; dy <= neckWin; dy++) {
-            if (y - dy >= topY  && sW[y - dy] > aboveMax) aboveMax = sW[y - dy];
-            if (y + dy <= bottomY && sW[y + dy] > belowMax) belowMax = sW[y + dy];
-          }
-          const ref = Math.min(aboveMax, belowMax);
-          if (ref > 0) {
-            const ratio = sW[y] / ref;
-            if (ratio < 0.85 && ratio < neckBest) {
-              neckBest = ratio;
-              neckY = y;
-            }
-          }
-        }
-        const headEndY = neckY >= 0 ? neckY : topY + Math.round(cH * 0.28);
-
-        // ---- LEG-SPLIT detection ----
-        const legLo = topY + Math.round(cH * 0.50);
-        const legHi = topY + Math.round(cH * 0.85);
-        let legSplitY = -1;
-
-        // Torso max width for reference
-        let torsoMaxW = 0;
-        for (let y = headEndY; y < legLo; y++) {
-          if (sW[y] > torsoMaxW) torsoMaxW = sW[y];
-        }
-        if (torsoMaxW === 0) torsoMaxW = sW[Math.round((headEndY + legLo) / 2)] || w * 0.4;
-
-        // Method A: center gap (silhouette splits into legs / tentacles)
-        for (let y = legLo; y <= legHi && legSplitY < 0; y++) {
-          if (rowW[y] === 0) continue;
-          const cx = Math.round((rowL[y] + rowR[y]) / 2);
-          const scanR = Math.max(3, Math.round(rowW[y] * 0.10));
-          let gap = 0;
-          for (let x = cx - scanR; x <= cx + scanR; x++) {
-            if (x >= 0 && x < w && alpha[y * w + x] <= OPAQUE) gap++;
-          }
-          if (gap > scanR) legSplitY = y;
-        }
-
-        // Method B: significant width reduction
-        if (legSplitY < 0 && torsoMaxW > 0) {
-          for (let y = legLo; y <= legHi; y++) {
-            if (sW[y] > 0 && sW[y] < torsoMaxW * 0.60) { legSplitY = y; break; }
-          }
-        }
-
-        // Default
-        if (legSplitY < 0) legSplitY = topY + Math.round(cH * 0.62);
-
-        // ---- Zone extents ----
-        function zoneExtent(y0, y1) {
-          let l = w, r = 0, sumCx = 0, n = 0;
-          for (let y = y0; y <= y1; y++) {
-            if (rowW[y] > 0) {
-              if (rowL[y] < l) l = rowL[y];
-              if (rowR[y] > r) r = rowR[y];
-              sumCx += (rowL[y] + rowR[y]) / 2;
-              n++;
-            }
-          }
-          return { left: l < w ? l : 0, right: r >= 0 ? r : w - 1, cx: n > 0 ? sumCx / n : w / 2 };
-        }
-
-        const headZ = zoneExtent(topY, headEndY);
-        const torsoZ = zoneExtent(headEndY, legSplitY);
-        const legZ  = zoneExtent(legSplitY, bottomY);
-        const creatureCx = (headZ.cx + torsoZ.cx + (legZ.cx || torsoZ.cx)) / 3;
-
-        // ---- Core body width (median torso width, excluding arm extensions) ----
-        const tw = [];
-        for (let y = headEndY; y <= legSplitY; y++) { if (rowW[y] > 0) tw.push(rowW[y]); }
-        tw.sort((a, b) => a - b);
-        const medTorsoW = tw.length > 0 ? tw[Math.floor(tw.length / 2)] : w * 0.5;
-        const coreHalf = medTorsoW / 2;
-        const coreL = creatureCx - coreHalf;
-        const coreR = creatureCx + coreHalf;
-
-        // ---- ARM detection (torso zone) ----
-        const armThresh = coreHalf * 0.15;
-        let laMinX = w, laYTop = legSplitY, laYBot = headEndY, hasLA = false;
-        let raMaxX = 0, raYTop = legSplitY, raYBot = headEndY, hasRA = false;
-        for (let y = headEndY; y <= legSplitY; y++) {
-          if (rowW[y] === 0) continue;
-          if (rowL[y] < coreL - armThresh) {
-            hasLA = true;
-            if (rowL[y] < laMinX) laMinX = rowL[y];
-            if (y < laYTop) laYTop = y;
-            if (y > laYBot) laYBot = y;
-          }
-          if (rowR[y] > coreR + armThresh) {
-            hasRA = true;
-            if (rowR[y] > raMaxX) raMaxX = rowR[y];
-            if (y < raYTop) raYTop = y;
-            if (y > raYBot) raYBot = y;
-          }
-        }
-
-        // ---- LEG left/right split ----
-        let llL = w, llR = 0, hasLL = false;
-        let rlL = w, rlR = 0, hasRL = false;
-        const cxI = Math.round(creatureCx);
-        for (let y = legSplitY; y <= bottomY; y++) {
-          if (rowW[y] === 0) continue;
-          for (let x = rowL[y]; x < cxI; x++) {
-            if (alpha[y * w + x] > OPAQUE) {
-              hasLL = true;
-              if (x < llL) llL = x;
-              if (x > llR) llR = x;
-            }
-          }
-          for (let x = cxI; x <= rowR[y]; x++) {
-            if (alpha[y * w + x] > OPAQUE) {
-              hasRL = true;
-              if (x < rlL) rlL = x;
-              if (x > rlR) rlR = x;
+        while (qHead < qTail) {
+          const i = queue[qHead++];
+          const x = i % w;
+          const y = (i - x) / w;
+          const nd = dist[i] + 1;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx, ny = y + dy;
+              if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+              const ni = ny * w + nx;
+              if (dist[ni] === -1) { dist[ni] = nd; queue[qTail++] = ni; }
             }
           }
         }
 
-        // ---- TAIL detection (asymmetric extension, lower half) ----
-        const tailSearchY = topY + Math.round(cH * 0.45);
-        let tL = w, tR = 0, tYTop = bottomY, tYBot = topY, hasTail = false;
-        for (let y = tailSearchY; y <= bottomY; y++) {
-          if (rowW[y] === 0) continue;
-          if (rowR[y] > coreR + coreHalf * 0.30) {
-            hasTail = true;
-            if (y < tYTop) tYTop = y;
-            if (y > tYBot) tYBot = y;
-            if (rowR[y] > tR) tR = rowR[y];
-            tL = Math.min(tL, Math.round(coreR));
+        // ── 3. Core threshold (adaptive) ──
+        let maxDist = 0;
+        for (let i = 0; i < N; i++) { if (opaque[i] && dist[i] > maxDist) maxDist = dist[i]; }
+
+        // Collect distance histogram for opaque pixels
+        const histogram = new Int32Array(maxDist + 1);
+        for (let i = 0; i < N; i++) {
+          if (opaque[i]) histogram[dist[i]]++;
+        }
+
+        // Find threshold where ~25-40% of opaque pixels are "core"
+        // Start at 30% of maxDist, adjust if core is too small or too large
+        let coreThresh = Math.max(2, Math.round(maxDist * 0.30));
+        let corePx = 0;
+        for (let d = coreThresh; d <= maxDist; d++) corePx += histogram[d];
+
+        // If core < 10%, lower threshold; if core > 70%, raise it
+        if (corePx < opaqueCount * 0.10) {
+          coreThresh = Math.max(2, Math.round(maxDist * 0.15));
+        } else if (corePx > opaqueCount * 0.70) {
+          coreThresh = Math.max(2, Math.round(maxDist * 0.45));
+        }
+
+        // ── 4. Mark core vs appendage ──
+        const isCore = new Uint8Array(N);
+        for (let i = 0; i < N; i++) {
+          isCore[i] = (opaque[i] && dist[i] >= coreThresh) ? 1 : 0;
+        }
+
+        // ── 5. Connected components on appendage pixels (8-connected) ──
+        const label = new Int32Array(N).fill(-1); // -1=unassigned, -2=core
+        for (let i = 0; i < N; i++) {
+          if (!opaque[i]) label[i] = -1;
+          else if (isCore[i]) label[i] = -2;
+        }
+
+        const components = []; // { id, pixels[], minX, maxX, minY, maxY, cx, cy, size }
+        let nextLabel = 0;
+        const bfsQ = [];
+
+        for (let i = 0; i < N; i++) {
+          if (opaque[i] && !isCore[i] && label[i] === -1) {
+            const compId = nextLabel++;
+            const pixels = [];
+            let minX = w, maxX = 0, minY = h, maxY = 0, sumX = 0, sumY = 0;
+
+            bfsQ.length = 0;
+            bfsQ.push(i);
+            label[i] = compId;
+
+            while (bfsQ.length > 0) {
+              const ci = bfsQ.pop();
+              pixels.push(ci);
+              const cx = ci % w;
+              const cy = (ci - cx) / w;
+              if (cx < minX) minX = cx;
+              if (cx > maxX) maxX = cx;
+              if (cy < minY) minY = cy;
+              if (cy > maxY) maxY = cy;
+              sumX += cx;
+              sumY += cy;
+
+              // 8-connected neighbours
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  if (dx === 0 && dy === 0) continue;
+                  const nx = cx + dx, ny = cy + dy;
+                  if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+                  const ni = ny * w + nx;
+                  if (opaque[ni] && !isCore[ni] && label[ni] === -1) {
+                    label[ni] = compId;
+                    bfsQ.push(ni);
+                  }
+                }
+              }
+            }
+
+            components.push({
+              id: compId, pixels,
+              minX, maxX, minY, maxY,
+              cx: sumX / pixels.length,
+              cy: sumY / pixels.length,
+              size: pixels.length,
+            });
           }
         }
 
-        // ---- Percentage helpers (clamp 0-100) ----
-        const PX = (v) => Math.max(0, Math.min(100, (v / w) * 100));
-        const PY = (v) => Math.max(0, Math.min(100, (v / h) * 100));
-        const OV  = Math.round(h * 0.08);  // overlap in pixels (~8 % of image)
+        // ── 6. Creature centroid (core-based) ──
+        let coreSumX = 0, coreSumY = 0, coreN = 0;
+        let creatureMinY = h, creatureMaxY = 0;
+        for (let i = 0; i < N; i++) {
+          if (opaque[i]) {
+            const y = (i / w) | 0;
+            if (y < creatureMinY) creatureMinY = y;
+            if (y > creatureMaxY) creatureMaxY = y;
+          }
+          if (isCore[i]) {
+            const x = i % w, y = (i - x) / w;
+            coreSumX += x; coreSumY += y; coreN++;
+          }
+        }
+        const bodyCx = coreN > 0 ? coreSumX / coreN : w / 2;
+        const bodyCy = coreN > 0 ? coreSumY / coreN : h / 2;
 
-        const chestBotY = Math.round((headEndY + legSplitY) / 2);
+        // ── 7. Classify significant appendage components ──
+        const minSize = opaqueCount * 0.003; // 0.3% of creature
+        const significant = components.filter(c => c.size >= minSize);
+        significant.sort((a, b) => b.size - a.size);
 
-        // ---- BUILD CLIPS ----
-        const clips = {};
+        const assignments = {
+          head: null, leftArm: null, rightArm: null,
+          leftLeg: null, rightLeg: null, tail: null,
+          extraTop: [], extraMid: [], extraBot: [],
+        };
 
-        // HEAD
-        clips.head = [
-          [PX(headZ.left - 4),  PY(topY - 2)],
-          [PX(headZ.right + 4), PY(topY - 2)],
-          [PX(headZ.right + 6), PY(headEndY + OV)],
-          [PX(headZ.left - 6),  PY(headEndY + OV)],
-        ];
+        for (const comp of significant) {
+          const relX = (comp.cx - bodyCx) / w;
+          const relY = (comp.cy - bodyCy) / h;
 
-        // NECK
-        const nL = Math.min(headZ.left, torsoZ.left);
-        const nR = Math.max(headZ.right, torsoZ.right);
-        const nInset = (nR - nL) * 0.12;
-        clips.neck = [
-          [PX(nL + nInset),     PY(headEndY - OV)],
-          [PX(nR - nInset),     PY(headEndY - OV)],
-          [PX(nR - nInset * 0.8), PY(headEndY + OV * 1.5)],
-          [PX(nL + nInset * 0.8), PY(headEndY + OV * 1.5)],
-        ];
-
-        // CHEST  (upper torso)
-        clips.chest = [
-          [PX(coreL - 4), PY(headEndY - OV * 0.5)],
-          [PX(coreR + 4), PY(headEndY - OV * 0.5)],
-          [PX(coreR + 6), PY(chestBotY + OV)],
-          [PX(coreL - 6), PY(chestBotY + OV)],
-        ];
-
-        // BELLY  (lower torso)
-        clips.belly = [
-          [PX(coreL - 6), PY(chestBotY - OV)],
-          [PX(coreR + 6), PY(chestBotY - OV)],
-          [PX(coreR + 8), PY(legSplitY + OV)],
-          [PX(coreL - 8), PY(legSplitY + OV)],
-        ];
-
-        // LEFT SHOULDER + HAND
-        if (hasLA) {
-          const aMid = Math.round((laYTop + laYBot) / 2);
-          clips.leftShoulder = [
-            [PX(laMinX - 2),             PY(laYTop - OV * 0.5)],
-            [PX(coreL + coreHalf * 0.20), PY(laYTop - OV * 0.3)],
-            [PX(coreL + coreHalf * 0.25), PY(aMid + OV)],
-            [PX(laMinX - 2),             PY(aMid + OV * 0.8)],
-          ];
-          clips.leftHand = [
-            [PX(laMinX - 2),             PY(aMid - OV)],
-            [PX(coreL + coreHalf * 0.15), PY(aMid - OV * 0.8)],
-            [PX(coreL + coreHalf * 0.20), PY(laYBot + OV)],
-            [PX(laMinX - 2),             PY(laYBot + OV * 0.5)],
-          ];
-        } else {
-          clips.leftShoulder = [[0, PY(headEndY)], [PX(coreL), PY(headEndY)], [PX(coreL), PY(chestBotY)], [0, PY(chestBotY)]];
-          clips.leftHand     = [[0, PY(chestBotY)], [PX(coreL), PY(chestBotY)], [PX(coreL), PY(legSplitY)], [0, PY(legSplitY)]];
+          if (relY < -0.10) {
+            // Above body center → head or ears
+            if (!assignments.head || comp.size > assignments.head.size) {
+              if (assignments.head) assignments.extraTop.push(assignments.head);
+              assignments.head = comp;
+            } else {
+              assignments.extraTop.push(comp);
+            }
+          } else if (relY > 0.08) {
+            // Below body center → legs / tail
+            if (relX < -0.03) {
+              if (!assignments.leftLeg) assignments.leftLeg = comp;
+              else assignments.extraBot.push(comp);
+            } else if (relX > 0.03) {
+              if (!assignments.rightLeg) assignments.rightLeg = comp;
+              else assignments.extraBot.push(comp);
+            } else {
+              // Center bottom → could be a single-mass legs or tail
+              if (!assignments.leftLeg && !assignments.rightLeg) {
+                // Split this component into left/right halves
+                const leftPx = [], rightPx = [];
+                for (const pi of comp.pixels) {
+                  const px = pi % w;
+                  if (px < bodyCx) leftPx.push(pi);
+                  else rightPx.push(pi);
+                }
+                if (leftPx.length > minSize && rightPx.length > minSize) {
+                  assignments.leftLeg = { ...comp, pixels: leftPx, size: leftPx.length, cx: bodyCx - 10 };
+                  assignments.rightLeg = { ...comp, pixels: rightPx, size: rightPx.length, cx: bodyCx + 10 };
+                } else if (!assignments.tail) {
+                  assignments.tail = comp;
+                } else {
+                  assignments.extraBot.push(comp);
+                }
+              } else if (!assignments.tail) {
+                assignments.tail = comp;
+              } else {
+                assignments.extraBot.push(comp);
+              }
+            }
+          } else {
+            // Middle → arms / fins / side appendages
+            if (relX < -0.04) {
+              if (!assignments.leftArm) assignments.leftArm = comp;
+              else assignments.extraMid.push(comp);
+            } else if (relX > 0.04) {
+              if (!assignments.rightArm) assignments.rightArm = comp;
+              else assignments.extraMid.push(comp);
+            } else {
+              assignments.extraMid.push(comp);
+            }
+          }
         }
 
-        // RIGHT SHOULDER + HAND
-        if (hasRA) {
-          const aMid = Math.round((raYTop + raYBot) / 2);
-          clips.rightShoulder = [
-            [PX(coreR - coreHalf * 0.20), PY(raYTop - OV * 0.3)],
-            [PX(raMaxX + 2),             PY(raYTop - OV * 0.5)],
-            [PX(raMaxX + 2),             PY(aMid + OV * 0.8)],
-            [PX(coreR - coreHalf * 0.25), PY(aMid + OV)],
-          ];
-          clips.rightHand = [
-            [PX(coreR - coreHalf * 0.15), PY(aMid - OV * 0.8)],
-            [PX(raMaxX + 2),             PY(aMid - OV)],
-            [PX(raMaxX + 2),             PY(raYBot + OV * 0.5)],
-            [PX(coreR - coreHalf * 0.20), PY(raYBot + OV)],
-          ];
-        } else {
-          clips.rightShoulder = [[PX(coreR), PY(headEndY)], [100, PY(headEndY)], [100, PY(chestBotY)], [PX(coreR), PY(chestBotY)]];
-          clips.rightHand     = [[PX(coreR), PY(chestBotY)], [100, PY(chestBotY)], [100, PY(legSplitY)], [PX(coreR), PY(legSplitY)]];
+        // Distribute extra bottom components across legs if many tentacles
+        const extraBots = [...assignments.extraBot];
+        for (const comp of extraBots) {
+          if (!assignments.leftLeg) { assignments.leftLeg = comp; continue; }
+          if (!assignments.rightLeg) { assignments.rightLeg = comp; continue; }
+          if (!assignments.tail) { assignments.tail = comp; continue; }
         }
 
-        // LEFT THIGH + FOOT
-        const legMidY = Math.round((legSplitY + bottomY) / 2);
-        if (hasLL) {
-          clips.leftThigh = [
-            [PX(llL - 2), PY(legSplitY - OV)],
-            [PX(cxI + 4), PY(legSplitY - OV)],
-            [PX(cxI + 6), PY(legMidY + OV)],
-            [PX(llL - 2), PY(legMidY + OV)],
-          ];
-          clips.leftFoot = [
-            [PX(llL - 2), PY(legMidY - OV)],
-            [PX(cxI + 6), PY(legMidY - OV)],
-            [PX(cxI + 6), PY(bottomY + 4)],
-            [PX(llL - 2), PY(bottomY + 4)],
-          ];
-        } else {
-          clips.leftThigh = [[PX(legZ.left - 2), PY(legSplitY - OV)], [50, PY(legSplitY - OV)], [50, PY(legMidY + OV)], [PX(legZ.left - 2), PY(legMidY + OV)]];
-          clips.leftFoot  = [[PX(legZ.left - 2), PY(legMidY - OV)],   [50, PY(legMidY - OV)],   [50, PY(bottomY + 4)],   [PX(legZ.left - 2), PY(bottomY + 4)]];
+        // ── 8. Part assignment map ──
+        const PARTS = {
+          head: 0, neck: 1, leftShoulder: 2, leftHand: 3,
+          rightShoulder: 4, rightHand: 5, chest: 6, belly: 7,
+          leftThigh: 8, leftFoot: 9, rightThigh: 10, rightFoot: 11, tail: 12,
+        };
+        const PART_NAMES = Object.keys(PARTS);
+        const partMap = new Int8Array(N).fill(-1);
+
+        // ── 8a. Divide core vertically ──
+        let coreMinY = h, coreMaxY = 0;
+        for (let i = 0; i < N; i++) {
+          if (isCore[i]) {
+            const y = (i / w) | 0;
+            if (y < coreMinY) coreMinY = y;
+            if (y > coreMaxY) coreMaxY = y;
+          }
+        }
+        const coreH = coreMaxY - coreMinY + 1;
+        const headLine   = coreMinY + coreH * 0.22;
+        const neckLine   = coreMinY + coreH * 0.32;
+        const chestLine  = coreMinY + coreH * 0.58;
+
+        for (let i = 0; i < N; i++) {
+          if (isCore[i]) {
+            const y = (i / w) | 0;
+            if      (y < headLine)  partMap[i] = PARTS.head;
+            else if (y < neckLine)  partMap[i] = PARTS.neck;
+            else if (y < chestLine) partMap[i] = PARTS.chest;
+            else                    partMap[i] = PARTS.belly;
+          }
         }
 
-        // RIGHT THIGH + FOOT
-        if (hasRL) {
-          clips.rightThigh = [
-            [PX(cxI - 4), PY(legSplitY - OV)],
-            [PX(rlR + 2), PY(legSplitY - OV)],
-            [PX(rlR + 2), PY(legMidY + OV)],
-            [PX(cxI - 6), PY(legMidY + OV)],
-          ];
-          clips.rightFoot = [
-            [PX(cxI - 6), PY(legMidY - OV)],
-            [PX(rlR + 2), PY(legMidY - OV)],
-            [PX(rlR + 2), PY(bottomY + 4)],
-            [PX(cxI - 6), PY(bottomY + 4)],
-          ];
-        } else {
-          clips.rightThigh = [[50, PY(legSplitY - OV)], [PX(legZ.right + 2), PY(legSplitY - OV)], [PX(legZ.right + 2), PY(legMidY + OV)], [50, PY(legMidY + OV)]];
-          clips.rightFoot  = [[50, PY(legMidY - OV)],   [PX(legZ.right + 2), PY(legMidY - OV)],   [PX(legZ.right + 2), PY(bottomY + 4)],   [50, PY(bottomY + 4)]];
+        // ── 8b. Assign appendage pixels ──
+        function assignAppendage(comp, upperPart, lowerPart) {
+          if (!comp) return;
+          const midY = (comp.minY + comp.maxY) / 2;
+          for (const pi of comp.pixels) {
+            const y = (pi / w) | 0;
+            partMap[pi] = y < midY ? upperPart : lowerPart;
+          }
         }
 
-        // TAIL
-        if (hasTail) {
-          clips.tail = [
-            [PX(tL),     PY(tYTop - OV * 0.5)],
-            [PX(tR + 4), PY(tYTop - OV)],
-            [PX(tR + 4), PY(tYBot + OV * 0.5)],
-            [PX(tL),     PY(tYBot + OV)],
-          ];
-        } else {
-          clips.tail = [
-            [PX(coreR),          PY(legSplitY - OV)],
-            [PX(torsoZ.right + 6), PY(legSplitY - OV * 2)],
-            [PX(torsoZ.right + 6), PY(bottomY)],
-            [PX(coreR),          PY(bottomY)],
-          ];
+        // Head appendage → all head
+        if (assignments.head) {
+          for (const pi of assignments.head.pixels) partMap[pi] = PARTS.head;
+        }
+        // Top extras → head
+        for (const comp of assignments.extraTop) {
+          for (const pi of comp.pixels) partMap[pi] = PARTS.head;
         }
 
-        console.log("Detected body clips — head ends at", Math.round(PY(headEndY)) + "%,",
-          "legs start at", Math.round(PY(legSplitY)) + "%,",
-          "leftArm:", hasLA, "rightArm:", hasRA, "tail:", hasTail);
+        assignAppendage(assignments.leftArm,  PARTS.leftShoulder, PARTS.leftHand);
+        assignAppendage(assignments.rightArm, PARTS.rightShoulder, PARTS.rightHand);
+        assignAppendage(assignments.leftLeg,  PARTS.leftThigh, PARTS.leftFoot);
+        assignAppendage(assignments.rightLeg, PARTS.rightThigh, PARTS.rightFoot);
 
-        resolve(clips);
+        if (assignments.tail) {
+          for (const pi of assignments.tail.pixels) partMap[pi] = PARTS.tail;
+        }
+
+        // Mid extras → chest/belly
+        for (const comp of assignments.extraMid) {
+          for (const pi of comp.pixels) partMap[pi] = PARTS.belly;
+        }
+
+        // ── 8c. Any remaining unlabelled opaque pixels → nearest zone ──
+        for (let i = 0; i < N; i++) {
+          if (opaque[i] && partMap[i] === -1) {
+            const x = i % w, y = (i - x) / w;
+            const relY = (y - bodyCy) / h;
+            const relX = (x - bodyCx) / w;
+            if      (relY < -0.15)                        partMap[i] = PARTS.head;
+            else if (relY < -0.05)                        partMap[i] = PARTS.neck;
+            else if (relY <  0.05 && relX < -0.15)       partMap[i] = PARTS.leftShoulder;
+            else if (relY <  0.05 && relX >  0.15)       partMap[i] = PARTS.rightShoulder;
+            else if (relY <  0.05)                        partMap[i] = PARTS.chest;
+            else if (relY <  0.15)                        partMap[i] = PARTS.belly;
+            else if (x < bodyCx)                          partMap[i] = PARTS.leftThigh;
+            else                                          partMap[i] = PARTS.rightThigh;
+          }
+        }
+
+        // ── 9. Create sprites with 2-px seam bleed ──
+        const sprites = {};
+        const centers = {};
+        const boxes = {};
+
+        const partCanvas = document.createElement("canvas");
+        partCanvas.width = w;
+        partCanvas.height = h;
+        const partCtx = partCanvas.getContext("2d");
+
+        for (const partName of PART_NAMES) {
+          const partId = PARTS[partName];
+
+          // Build mask for this part
+          let mask = new Uint8Array(N);
+          for (let i = 0; i < N; i++) {
+            if (partMap[i] === partId) mask[i] = 1;
+          }
+
+          // Dilate 2px into neighbouring opaque pixels
+          for (let pass = 0; pass < 2; pass++) {
+            const expanded = new Uint8Array(mask);
+            for (let y = 0; y < h; y++) {
+              for (let x = 0; x < w; x++) {
+                const i = y * w + x;
+                if (mask[i] || !opaque[i]) continue;
+                if ((x > 0     && mask[i - 1]) ||
+                    (x < w - 1 && mask[i + 1]) ||
+                    (y > 0     && mask[i - w]) ||
+                    (y < h - 1 && mask[i + w])) {
+                  expanded[i] = 1;
+                }
+              }
+            }
+            mask = expanded;
+          }
+
+          // Render sprite
+          partCtx.clearRect(0, 0, w, h);
+          const pImg = partCtx.createImageData(w, h);
+          const pd = pImg.data;
+
+          let sumX = 0, sumY = 0, count = 0;
+          let bMinX = w, bMaxX = 0, bMinY = h, bMaxY = 0;
+
+          for (let i = 0; i < N; i++) {
+            if (mask[i]) {
+              const s = i * 4;
+              pd[s]     = rgba[s];
+              pd[s + 1] = rgba[s + 1];
+              pd[s + 2] = rgba[s + 2];
+              pd[s + 3] = rgba[s + 3];
+
+              if (partMap[i] === partId) {
+                const x = i % w, y = (i - x) / w;
+                sumX += x; sumY += y; count++;
+                if (x < bMinX) bMinX = x;
+                if (x > bMaxX) bMaxX = x;
+                if (y < bMinY) bMinY = y;
+                if (y > bMaxY) bMaxY = y;
+              }
+            }
+          }
+
+          if (count === 0) {
+            sprites[partName] = TRANSPARENT_PIXEL;
+            centers[partName] = [50, 50];
+            boxes[partName]   = { minX: 0, maxX: 100, minY: 0, maxY: 100 };
+            continue;
+          }
+
+          partCtx.putImageData(pImg, 0, 0);
+          sprites[partName] = partCanvas.toDataURL("image/png");
+          centers[partName] = [(sumX / count / w) * 100, (sumY / count / h) * 100];
+          boxes[partName]   = {
+            minX: (bMinX / w) * 100,
+            maxX: (bMaxX / w) * 100,
+            minY: (bMinY / h) * 100,
+            maxY: (bMaxY / h) * 100,
+          };
+        }
+
+        console.log("Pixel-level body detection complete — core threshold:", coreThresh,
+          "of max", maxDist, "| appendage components:", components.length,
+          "significant:", significant.length);
+
+        resolve({ sprites, centers, boxes });
 
       } catch (e) {
-        console.warn("Body detection failed, falling back to defaults:", e);
+        console.warn("Body detection failed:", e);
         resolve(null);
       }
     };
@@ -1370,28 +1481,17 @@ function detectBodyClips(dataUrl) {
 }
 
 /**
- * Slice a full creature image into individual body-part sprites.
- * Each sprite is a full-size transparent PNG containing only the pixels
- * inside that part's clip-path polygon.
- *
- * Accepts optional custom clip polygons (from detectBodyClips); falls back
- * to the static BODY_PART_CLIPS if none are provided.
- *
- * Parts with too few opaque pixels are replaced with a transparent
- * placeholder so they don't render as weird artefacts.
- *
- * Returns an object  { head: dataUrl, neck: dataUrl, … }  or null on error.
+ * Slice a full creature image into individual body-part sprites using
+ * fixed polygon clip regions.  Used ONLY as a fallback when the pixel-
+ * level detection above fails.
  */
-function sliceIntoSprites(fullDataUrl, customClips) {
-  const clipDefs = customClips || BODY_PART_CLIPS;
-
+function sliceIntoSprites(fullDataUrl) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const w = img.naturalWidth;
       const h = img.naturalHeight;
 
-      // ---- read source alpha once ----
       const srcCanvas = document.createElement("canvas");
       srcCanvas.width = w;
       srcCanvas.height = h;
@@ -1409,15 +1509,10 @@ function sliceIntoSprites(fullDataUrl, customClips) {
       const clipCtx = clipCanvas.getContext("2d");
 
       const sprites = {};
+      const MIN_CONTENT = 0.004;
 
-      // Minimum fraction of opaque pixels inside a part to count as content
-      const MIN_CONTENT = 0.004; // 0.4 %
-
-      for (const [partName, polygon] of Object.entries(clipDefs)) {
-        // Convert percentages → pixel coords
+      for (const [partName, polygon] of Object.entries(BODY_PART_CLIPS)) {
         const pxPoly = polygon.map(([px, py]) => [(px / 100) * w, (py / 100) * h]);
-
-        // Bounding box of this polygon (for fast scan)
         const xs = pxPoly.map(p => p[0]);
         const ys = pxPoly.map(p => p[1]);
         const bx0 = Math.max(0, Math.floor(Math.min(...xs)));
@@ -1425,7 +1520,6 @@ function sliceIntoSprites(fullDataUrl, customClips) {
         const bx1 = Math.min(w - 1, Math.ceil(Math.max(...xs)));
         const by1 = Math.min(h - 1, Math.ceil(Math.max(...ys)));
 
-        // Count opaque pixels inside polygon
         let opaque = 0, total = 0;
         for (let y = by0; y <= by1; y++) {
           for (let x = bx0; x <= bx1; x++) {
@@ -1436,20 +1530,16 @@ function sliceIntoSprites(fullDataUrl, customClips) {
           }
         }
 
-        // Skip parts that contain (almost) nothing visible
         if (total === 0 || opaque / total < MIN_CONTENT) {
           sprites[partName] = TRANSPARENT_PIXEL;
           continue;
         }
 
-        // ---- clip & render ----
         clipCtx.clearRect(0, 0, w, h);
         clipCtx.save();
         clipCtx.beginPath();
         clipCtx.moveTo(pxPoly[0][0], pxPoly[0][1]);
-        for (let i = 1; i < pxPoly.length; i++) {
-          clipCtx.lineTo(pxPoly[i][0], pxPoly[i][1]);
-        }
+        for (let i = 1; i < pxPoly.length; i++) clipCtx.lineTo(pxPoly[i][0], pxPoly[i][1]);
         clipCtx.closePath();
         clipCtx.clip();
         clipCtx.drawImage(img, 0, 0);
@@ -1467,38 +1557,40 @@ function sliceIntoSprites(fullDataUrl, customClips) {
 
 /** Apply per-part sprite images to the pet. Base layer becomes transparent. */
 function setPetSprites(sprites) {
-  // Base gets transparent — individual parts handle all rendering
   petImgBase.src = TRANSPARENT_PIXEL;
-
   for (const [partKey, img] of Object.entries(petImgs)) {
-    if (sprites[partKey]) {
-      img.src = sprites[partKey];
-    }
+    if (sprites[partKey]) img.src = sprites[partKey];
   }
 }
 
 /**
- * Set inline CSS clip-path on each body-part <img> so the visual mask
- * matches the detected (or fallback) polygons.
- * Pass null to clear inline styles and revert to the CSS-class clip-paths.
+ * Set inline CSS on each body-part <img> to match detected anatomy.
+ * When pixel-level sprites are active, clip-path is "none" (the sprite
+ * itself IS the mask).  transform-origin is set to each part's centroid
+ * so animations pivot around the right point.
+ *
+ * Pass null to revert to the class-based clip-paths (fallback mode).
  */
-function applyClipPathCSS(clips) {
+function applyPartStyles(centers, boxes) {
   for (const [partKey, imgEl] of Object.entries(petImgs)) {
-    if (clips && clips[partKey]) {
-      const pts = clips[partKey].map(([x, y]) => `${x}% ${y}%`).join(", ");
-      imgEl.style.clipPath = `polygon(${pts})`;
+    if (centers && centers[partKey]) {
+      imgEl.style.clipPath = "none";
+      const [cx, cy] = centers[partKey];
+      imgEl.style.transformOrigin = `${cx.toFixed(1)}% ${cy.toFixed(1)}%`;
     } else {
-      imgEl.style.clipPath = "";  // fall back to class-based clip-path
+      imgEl.style.clipPath = "";
+      imgEl.style.transformOrigin = "";
     }
   }
 
-  // Position eyelid inside the detected head region
-  if (clips && clips.head) {
-    const hd = clips.head;
-    const eyeT = hd[0][1] + (hd[2][1] - hd[0][1]) * 0.35;
-    const eyeB = hd[0][1] + (hd[2][1] - hd[0][1]) * 0.65;
-    const eyeL = hd[0][0] + (hd[1][0] - hd[0][0]) * 0.15;
-    const eyeR = hd[1][0] - (hd[1][0] - hd[0][0]) * 0.15;
+  // Position eyelid inside the detected head
+  if (boxes && boxes.head) {
+    const hb = boxes.head;
+    const headH = hb.maxY - hb.minY;
+    const eyeT = hb.minY + headH * 0.35;
+    const eyeB = hb.minY + headH * 0.55;
+    const eyeL = hb.minX + 5;
+    const eyeR = hb.maxX - 5;
     petEyelid.style.clipPath = `polygon(${eyeL}% ${eyeT}%, ${eyeR}% ${eyeT}%, ${eyeR}% ${eyeB}%, ${eyeL}% ${eyeB}%)`;
   } else {
     petEyelid.style.clipPath = "";
@@ -1506,21 +1598,30 @@ function applyClipPathCSS(clips) {
 }
 
 /**
- * Detect body parts, slice a full creature image into sprites,
- * cache them, apply to the DOM, and set matching CSS clip-paths.
- * Falls back to the static clip layout if detection fails.
+ * Detect body parts at the pixel level, create masked sprites,
+ * apply to the DOM, and set matching inline styles.
+ * Falls back to the static polygon approach if detection fails.
  */
 async function applyCreatureSprites(level, dataUrl) {
-  const detectedClips = await detectBodyClips(dataUrl);
-  const sprites = await sliceIntoSprites(dataUrl, detectedClips);
-  if (sprites) {
-    spriteCache[level] = sprites;
-    setPetSprites(sprites);
-    applyClipPathCSS(detectedClips);
+  // Try pixel-level body detection
+  const result = await detectAndSliceSprites(dataUrl);
+
+  if (result) {
+    spriteCache[level] = result.sprites;
+    setPetSprites(result.sprites);
+    applyPartStyles(result.centers, result.boxes);
   } else {
-    // Fallback to full image on all parts
-    setPetImageSrc(dataUrl);
-    applyClipPathCSS(null);
+    // Fallback to static polygon clips
+    console.warn("Pixel detection failed, using polygon fallback");
+    const sprites = await sliceIntoSprites(dataUrl);
+    if (sprites) {
+      spriteCache[level] = sprites;
+      setPetSprites(sprites);
+      applyPartStyles(null, null);
+    } else {
+      setPetImageSrc(dataUrl);
+      applyPartStyles(null, null);
+    }
   }
 }
 
@@ -1785,11 +1886,12 @@ async function checkDevolution() {
       setPetSprites(spriteCache[newLevel]);
     } else if (gameState.cachedImages[newLevel]) {
       setPetImageSrc(gameState.cachedImages[newLevel]);
-      // Async slice for better display
-      sliceIntoSprites(gameState.cachedImages[newLevel]).then(sprites => {
-        if (sprites) {
-          spriteCache[newLevel] = sprites;
-          setPetSprites(sprites);
+      // Async detect + slice for better display
+      detectAndSliceSprites(gameState.cachedImages[newLevel]).then(result => {
+        if (result) {
+          spriteCache[newLevel] = result.sprites;
+          setPetSprites(result.sprites);
+          applyPartStyles(result.centers, result.boxes);
         }
       });
     }
@@ -2431,12 +2533,13 @@ async function equipPet(creature) {
     const raw = gameState.cachedImages[gameState.level];
     setPetImageSrc(raw);
 
-    // Process bg removal + slice into sprites
+    // Process bg removal + detect & slice into sprites
     const processAndSlice = async (imgData) => {
-      const sprites = await sliceIntoSprites(imgData);
-      if (sprites) {
-        spriteCache[gameState.level] = sprites;
-        setPetSprites(sprites);
+      const result = await detectAndSliceSprites(imgData);
+      if (result) {
+        spriteCache[gameState.level] = result.sprites;
+        setPetSprites(result.sprites);
+        applyPartStyles(result.centers, result.boxes);
       }
     };
 
@@ -3443,12 +3546,13 @@ async function init() {
       const raw = gameState.cachedImages[gameState.level];
       setPetImageSrc(raw); // show immediately with full image
 
-      // Process: bg removal if needed, then slice into per-part sprites
+      // Process: bg removal if needed, then detect & slice into per-part sprites
       const processAndSlice = async (imgData) => {
-        const sprites = await sliceIntoSprites(imgData);
-        if (sprites) {
-          spriteCache[gameState.level] = sprites;
-          setPetSprites(sprites);
+        const result = await detectAndSliceSprites(imgData);
+        if (result) {
+          spriteCache[gameState.level] = result.sprites;
+          setPetSprites(result.sprites);
+          applyPartStyles(result.centers, result.boxes);
         }
       };
 
