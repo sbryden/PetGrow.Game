@@ -1019,6 +1019,10 @@ body {
   gap: 20px;
 }
 
+#hatching-egg {
+  font-size: 5rem;
+}
+
 .hatching-text {
   font-family: var(--font-title);
   font-size: 0.9rem;
@@ -1151,14 +1155,35 @@ body {
   /* No clip-path, no animation — full image stays perfectly still */
 }
 
-/* --- 13 overlapping clip regions with 3D depth --- */
+/* --- 18 overlapping clip regions with 3D depth --- */
 
-/* HEAD — top area with generous overlap into neck/chest */
-.pet-part-head {
-  clip-path: polygon(5% 0%, 95% 0%, 98% 46%, 2% 46%);
+/* HAT — top cap of the head */
+.pet-part-hat {
+  clip-path: polygon(5% 0%, 95% 0%, 96% 16%, 4% 16%);
+  z-index: 16;
+  transform-origin: 50% 10%;
+  transform: translateZ(7px);
+}
+/* FACE — lower head area below hat, includes mouth/chin */
+.pet-part-face {
+  clip-path: polygon(4% 14%, 96% 14%, 98% 46%, 2% 46%);
   z-index: 14;
-  transform-origin: 50% 42%;
+  transform-origin: 50% 30%;
   transform: translateZ(6px);
+}
+/* LEFT EYE — left eye region on the face */
+.pet-part-left-eye {
+  clip-path: polygon(8% 16%, 44% 16%, 44% 36%, 8% 36%);
+  z-index: 15;
+  transform-origin: 26% 26%;
+  transform: translateZ(6.5px);
+}
+/* RIGHT EYE — right eye region on the face */
+.pet-part-right-eye {
+  clip-path: polygon(56% 16%, 92% 16%, 92% 36%, 56% 36%);
+  z-index: 15;
+  transform-origin: 74% 26%;
+  transform: translateZ(6.5px);
 }
 /* NECK — bridges head & chest, overlaps both by ~8% */
 .pet-part-neck {
@@ -1167,29 +1192,29 @@ body {
   transform-origin: 50% 40%;
   transform: translateZ(4px);
 }
-/* LEFT SHOULDER — upper-left arm area, overlaps into chest & hand */
-.pet-part-left-shoulder {
+/* LEFT BICEP — upper-left arm area, overlaps into chest & forearm */
+.pet-part-left-bicep {
   clip-path: polygon(0% 22%, 38% 24%, 40% 52%, 0% 50%);
   z-index: 9;
   transform-origin: 34% 30%;
   transform: translateZ(3px);
 }
-/* LEFT HAND — lower-left arm/paw, overlaps shoulder */
-.pet-part-left-hand {
+/* LEFT FOREARM — lower-left arm/paw, overlaps bicep */
+.pet-part-left-forearm {
   clip-path: polygon(0% 44%, 36% 44%, 36% 70%, 0% 68%);
   z-index: 8;
   transform-origin: 30% 48%;
   transform: translateZ(2px);
 }
-/* RIGHT SHOULDER — upper-right arm area, overlaps into chest & hand */
-.pet-part-right-shoulder {
+/* RIGHT BICEP — upper-right arm area, overlaps into chest & forearm */
+.pet-part-right-bicep {
   clip-path: polygon(62% 24%, 100% 22%, 100% 50%, 60% 52%);
   z-index: 9;
   transform-origin: 66% 30%;
   transform: translateZ(3px);
 }
-/* RIGHT HAND — lower-right arm/paw, overlaps shoulder */
-.pet-part-right-hand {
+/* RIGHT FOREARM — lower-right arm/paw, overlaps bicep */
+.pet-part-right-forearm {
   clip-path: polygon(64% 44%, 100% 44%, 100% 68%, 64% 70%);
   z-index: 8;
   transform-origin: 70% 48%;
@@ -1209,32 +1234,46 @@ body {
   transform-origin: 50% 60%;
   transform: translateZ(4px);
 }
-/* LEFT THIGH — upper-left leg, overlaps belly & foot */
+/* LEFT THIGH — upper-left leg, overlaps belly & shin */
 .pet-part-left-thigh {
   clip-path: polygon(4% 62%, 52% 62%, 54% 86%, 2% 86%);
   z-index: 5;
   transform-origin: 30% 66%;
   transform: translateZ(1px);
 }
-/* LEFT FOOT — lower-left leg/paw, overlaps thigh */
-.pet-part-left-foot {
-  clip-path: polygon(2% 78%, 54% 78%, 54% 100%, 0% 100%);
+/* LEFT SHIN — lower-left leg, overlaps thigh & foot */
+.pet-part-left-shin {
+  clip-path: polygon(2% 78%, 54% 78%, 54% 92%, 0% 92%);
   z-index: 4;
-  transform-origin: 28% 82%;
+  transform-origin: 28% 84%;
+  transform: translateZ(0.5px);
+}
+/* LEFT FOOT — left paw at the bottom */
+.pet-part-left-foot {
+  clip-path: polygon(0% 90%, 54% 90%, 54% 100%, 0% 100%);
+  z-index: 3;
+  transform-origin: 28% 95%;
   transform: translateZ(0px);
 }
-/* RIGHT THIGH — upper-right leg, overlaps belly & foot */
+/* RIGHT THIGH — upper-right leg, overlaps belly & shin */
 .pet-part-right-thigh {
   clip-path: polygon(48% 62%, 96% 62%, 98% 86%, 46% 86%);
   z-index: 5;
   transform-origin: 70% 66%;
   transform: translateZ(1px);
 }
-/* RIGHT FOOT — lower-right leg/paw, overlaps thigh */
-.pet-part-right-foot {
-  clip-path: polygon(46% 78%, 98% 78%, 100% 100%, 46% 100%);
+/* RIGHT SHIN — lower-right leg, overlaps thigh & foot */
+.pet-part-right-shin {
+  clip-path: polygon(46% 78%, 98% 78%, 100% 92%, 46% 92%);
   z-index: 4;
-  transform-origin: 72% 82%;
+  transform-origin: 72% 84%;
+  transform: translateZ(0.5px);
+}
+/* RIGHT FOOT — right paw at the bottom */
+.pet-part-right-foot {
+  clip-path: polygon(46% 90%, 100% 90%, 100% 100%, 46% 100%);
+  z-index: 3;
+  transform-origin: 72% 95%;
   transform: translateZ(0px);
 }
 /* TAIL — behind everything except base */
@@ -1260,58 +1299,73 @@ body {
 }
 
 /* ================================================================
-   BABY IDLE (gentle, curious) — 13 parts + eyelid
+   BABY IDLE (gentle, curious) — 18 parts + eyelid
    ================================================================ */
-.pet-parts.pet-baby .pet-part-head           { animation: baby-head 4.3s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-eyelid         { animation: blink 4.5s linear infinite; }
-.pet-parts.pet-baby .pet-part-neck           { animation: baby-neck 4.5s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-left-shoulder  { animation: baby-lshoulder 3.7s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-left-hand      { animation: baby-lhand 3.9s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-right-shoulder { animation: baby-rshoulder 3.8s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-right-hand     { animation: baby-rhand 4.0s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-chest          { animation: baby-chest 3.8s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-belly          { animation: baby-belly 4.0s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-tail           { animation: baby-tail 2.8s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-left-thigh     { animation: baby-lthigh 4.1s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-left-foot      { animation: baby-lfoot 4.3s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-right-thigh    { animation: baby-rthigh 4.1s ease-in-out infinite; }
-.pet-parts.pet-baby .pet-part-right-foot     { animation: baby-rfoot 4.3s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-hat             { animation: baby-hat 4.1s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-face            { animation: baby-face 4.3s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-left-eye        { animation: baby-face 4.3s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-right-eye       { animation: baby-face 4.3s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-eyelid          { animation: blink 4.5s linear infinite; }
+.pet-parts.pet-baby .pet-part-neck            { animation: baby-neck 4.5s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-left-bicep      { animation: baby-lbicep 3.7s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-left-forearm    { animation: baby-lforearm 3.9s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-right-bicep     { animation: baby-rbicep 3.8s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-right-forearm   { animation: baby-rforearm 4.0s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-chest           { animation: baby-chest 3.8s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-belly           { animation: baby-belly 4.0s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-tail            { animation: baby-tail 2.8s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-left-thigh      { animation: baby-lthigh 4.1s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-left-shin       { animation: baby-lshin 4.2s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-left-foot       { animation: baby-lfoot 4.3s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-right-thigh     { animation: baby-rthigh 4.1s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-right-shin      { animation: baby-rshin 4.2s ease-in-out infinite; }
+.pet-parts.pet-baby .pet-part-right-foot      { animation: baby-rfoot 4.3s ease-in-out infinite; }
 
 /* ================================================================
-   TEEN IDLE (energetic, bouncy) — 13 parts + eyelid
+   TEEN IDLE (energetic, bouncy) — 18 parts + eyelid
    ================================================================ */
-.pet-parts.pet-teen .pet-part-head           { animation: teen-head 3.1s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-eyelid         { animation: blink 3.2s linear infinite; }
-.pet-parts.pet-teen .pet-part-neck           { animation: teen-neck 3.3s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-left-shoulder  { animation: teen-lshoulder 2.3s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-left-hand      { animation: teen-lhand 2.5s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-right-shoulder { animation: teen-rshoulder 2.4s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-right-hand     { animation: teen-rhand 2.6s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-chest          { animation: teen-chest 2.7s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-belly          { animation: teen-belly 2.9s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-tail           { animation: teen-tail 1.6s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-left-thigh     { animation: teen-lthigh 2.9s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-left-foot      { animation: teen-lfoot 3.1s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-right-thigh    { animation: teen-rthigh 2.9s ease-in-out infinite; }
-.pet-parts.pet-teen .pet-part-right-foot     { animation: teen-rfoot 3.1s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-hat             { animation: teen-hat 2.9s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-face            { animation: teen-face 3.1s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-left-eye        { animation: teen-face 3.1s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-right-eye       { animation: teen-face 3.1s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-eyelid          { animation: blink 3.2s linear infinite; }
+.pet-parts.pet-teen .pet-part-neck            { animation: teen-neck 3.3s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-left-bicep      { animation: teen-lbicep 2.3s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-left-forearm    { animation: teen-lforearm 2.5s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-right-bicep     { animation: teen-rbicep 2.4s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-right-forearm   { animation: teen-rforearm 2.6s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-chest           { animation: teen-chest 2.7s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-belly           { animation: teen-belly 2.9s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-tail            { animation: teen-tail 1.6s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-left-thigh      { animation: teen-lthigh 2.9s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-left-shin       { animation: teen-lshin 3.0s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-left-foot       { animation: teen-lfoot 3.1s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-right-thigh     { animation: teen-rthigh 2.9s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-right-shin      { animation: teen-rshin 3.0s ease-in-out infinite; }
+.pet-parts.pet-teen .pet-part-right-foot      { animation: teen-rfoot 3.1s ease-in-out infinite; }
 
 /* ================================================================
-   LEGENDARY IDLE (majestic, serene) — 13 parts + eyelid
+   LEGENDARY IDLE (majestic, serene) — 18 parts + eyelid
    ================================================================ */
-.pet-parts.pet-legend .pet-part-head           { animation: legend-head 5.3s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-eyelid         { animation: blink 5.5s linear infinite; }
-.pet-parts.pet-legend .pet-part-neck           { animation: legend-neck 5.5s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-left-shoulder  { animation: legend-lshoulder 4.1s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-left-hand      { animation: legend-lhand 4.3s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-right-shoulder { animation: legend-rshoulder 4.2s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-right-hand     { animation: legend-rhand 4.4s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-chest          { animation: legend-chest 4.7s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-belly          { animation: legend-belly 4.9s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-tail           { animation: legend-tail 3.3s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-left-thigh     { animation: legend-lthigh 5.1s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-left-foot      { animation: legend-lfoot 5.3s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-right-thigh    { animation: legend-rthigh 5.1s ease-in-out infinite; }
-.pet-parts.pet-legend .pet-part-right-foot     { animation: legend-rfoot 5.3s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-hat             { animation: legend-hat 5.1s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-face            { animation: legend-face 5.3s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-left-eye        { animation: legend-face 5.3s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-right-eye       { animation: legend-face 5.3s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-eyelid          { animation: blink 5.5s linear infinite; }
+.pet-parts.pet-legend .pet-part-neck            { animation: legend-neck 5.5s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-left-bicep      { animation: legend-lbicep 4.1s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-left-forearm    { animation: legend-lforearm 4.3s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-right-bicep     { animation: legend-rbicep 4.2s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-right-forearm   { animation: legend-rforearm 4.4s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-chest           { animation: legend-chest 4.7s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-belly           { animation: legend-belly 4.9s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-tail            { animation: legend-tail 3.3s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-left-thigh      { animation: legend-lthigh 5.1s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-left-shin       { animation: legend-lshin 5.2s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-left-foot       { animation: legend-lfoot 5.3s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-right-thigh     { animation: legend-rthigh 5.1s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-right-shin      { animation: legend-rshin 5.2s ease-in-out infinite; }
+.pet-parts.pet-legend .pet-part-right-foot      { animation: legend-rfoot 5.3s ease-in-out infinite; }
 
 /* --- Blink keyframes --- */
 @keyframes blink {

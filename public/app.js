@@ -84,19 +84,24 @@ const NEED_CRITICAL_THRESHOLD = 15;
 
 // ---------- 🧩 SPRITE SLICING CONSTANTS ----------
 const BODY_PART_CLIPS = {
-  head:           [[5,0], [95,0], [98,46], [2,46]],
-  neck:           [[20,32], [80,32], [82,50], [18,50]],
-  leftShoulder:   [[0,22], [38,24], [40,52], [0,50]],
-  leftHand:       [[0,44], [36,44], [36,70], [0,68]],
-  rightShoulder:  [[62,24], [100,22], [100,50], [60,52]],
-  rightHand:      [[64,44], [100,44], [100,68], [64,70]],
-  chest:          [[18,36], [82,36], [84,58], [16,58]],
-  belly:          [[16,50], [84,50], [86,74], [14,74]],
-  leftThigh:      [[4,62], [52,62], [54,86], [2,86]],
-  leftFoot:       [[2,78], [54,78], [54,100], [0,100]],
-  rightThigh:     [[48,62], [96,62], [98,86], [46,86]],
-  rightFoot:      [[46,78], [98,78], [100,100], [46,100]],
-  tail:           [[70,50], [100,38], [100,85], [76,92]],
+  hat:             [[5,0], [95,0], [96,16], [4,16]],
+  face:            [[4,14], [96,14], [98,46], [2,46]],
+  leftEye:         [[8,16], [44,16], [44,36], [8,36]],
+  rightEye:        [[56,16], [92,16], [92,36], [56,36]],
+  neck:            [[20,32], [80,32], [82,50], [18,50]],
+  leftBicep:       [[0,22], [38,24], [40,52], [0,50]],
+  leftForearm:     [[0,44], [36,44], [36,70], [0,68]],
+  rightBicep:      [[62,24], [100,22], [100,50], [60,52]],
+  rightForearm:    [[64,44], [100,44], [100,68], [64,70]],
+  chest:           [[18,36], [82,36], [84,58], [16,58]],
+  belly:           [[16,50], [84,50], [86,74], [14,74]],
+  leftThigh:       [[4,62], [52,62], [54,86], [2,86]],
+  leftShin:        [[2,78], [54,78], [54,92], [0,92]],
+  leftFoot:        [[0,90], [54,90], [54,100], [0,100]],
+  rightThigh:      [[48,62], [96,62], [98,86], [46,86]],
+  rightShin:       [[46,78], [98,78], [100,92], [46,92]],
+  rightFoot:       [[46,90], [100,90], [100,100], [46,100]],
+  tail:            [[70,50], [100,38], [100,85], [76,92]],
 };
 
 // In-memory sprite cache — { [level]: { head: dataUrl, neck: dataUrl, ... } }
@@ -152,18 +157,23 @@ const roomBg = $("room-bg");
 const petParts = $("pet-parts");
 const petImgBase = $("pet-img-base");
 const petImgs = {
-  head: $("pet-img-head"),
+  hat: $("pet-img-hat"),
+  face: $("pet-img-face"),
+  leftEye: $("pet-img-left-eye"),
+  rightEye: $("pet-img-right-eye"),
   neck: $("pet-img-neck"),
-  leftShoulder: $("pet-img-left-shoulder"),
-  leftHand: $("pet-img-left-hand"),
-  rightShoulder: $("pet-img-right-shoulder"),
-  rightHand: $("pet-img-right-hand"),
+  leftBicep: $("pet-img-left-bicep"),
+  leftForearm: $("pet-img-left-forearm"),
+  rightBicep: $("pet-img-right-bicep"),
+  rightForearm: $("pet-img-right-forearm"),
   chest: $("pet-img-chest"),
   belly: $("pet-img-belly"),
   tail: $("pet-img-tail"),
   leftThigh: $("pet-img-left-thigh"),
+  leftShin: $("pet-img-left-shin"),
   leftFoot: $("pet-img-left-foot"),
   rightThigh: $("pet-img-right-thigh"),
+  rightShin: $("pet-img-right-shin"),
   rightFoot: $("pet-img-right-foot"),
 };
 const petEyelid = $("pet-eyelid");
@@ -632,7 +642,7 @@ function buildPrompt(level) {
   if (wildcard) desc += `, featuring a ${wildcard} as part of its body or as an accessory`;
   if (element) desc += `, with a ${element} texture`;
 
-  const prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Draw the creature LARGE so it fills at least 80% of the image — do not leave large empty margins. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered, facing the viewer, with its full body visible including all limbs, fins, tentacles, or appendages. No text in the image.`;
+  const prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Draw the creature LARGE so it fills at least 80% of the image — do not leave large empty margins. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered, facing the viewer, standing upright in a symmetrical A-pose with arms, fins, or limbs slightly spread away from the body. The head should be clearly distinct from the torso with a visible neck or narrowing between them. All limbs and appendages should have clear separation from the torso — no limbs pressed flat against the body. Full body visible including all limbs, fins, tentacles, or appendages. No text in the image.`;
 
   return prompt;
 }
@@ -874,6 +884,79 @@ function removeImageBackground(dataUrl) {
         }
         if (found === 0) break; // no new seeds — done
         floodFill();
+      }
+
+      // --- Pass 3: Standalone interior pocket detection ---
+      // Find any remaining contiguous clusters of bg-colored pixels that are
+      // fully enclosed by the creature (e.g. gaps between arms and legs).
+      // These pockets have no transparent neighbour so the passes above
+      // can never reach them.  We detect them via connected-component BFS:
+      // any cluster of bg-colored pixels that does NOT touch the image edge
+      // is an interior pocket and should be made transparent.
+      {
+        const pocketVisited = new Uint8Array(w * h);
+        // Mark already-handled pixels
+        for (let i = 0; i < w * h; i++) {
+          if (visited[i] || data[i * 4 + 3] < 10) pocketVisited[i] = 1;
+        }
+
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const i = y * w + x;
+            if (pocketVisited[i]) continue;
+            const idx4 = i * 4;
+            if (data[idx4 + 3] < 10) { pocketVisited[i] = 1; continue; }
+            if (!colorsMatch(data[idx4], data[idx4 + 1], data[idx4 + 2], bgR, bgG, bgB)) {
+              pocketVisited[i] = 1;
+              continue;
+            }
+
+            // BFS to collect this cluster of bg-colored pixels
+            const cluster = [i];
+            pocketVisited[i] = 1;
+            let touchesEdge = (x === 0 || x === w - 1 || y === 0 || y === h - 1);
+            let ci = 0;
+            while (ci < cluster.length) {
+              const pi = cluster[ci++];
+              const px = pi % w;
+              const py = (pi - px) / w;
+              const neighbors = [];
+              if (px > 0)     neighbors.push(pi - 1);
+              if (px < w - 1) neighbors.push(pi + 1);
+              if (py > 0)     neighbors.push(pi - w);
+              if (py < h - 1) neighbors.push(pi + w);
+              // Also check 8-connected (diagonal) to catch thin gaps
+              if (px > 0 && py > 0)         neighbors.push(pi - w - 1);
+              if (px < w - 1 && py > 0)     neighbors.push(pi - w + 1);
+              if (px > 0 && py < h - 1)     neighbors.push(pi + w - 1);
+              if (px < w - 1 && py < h - 1) neighbors.push(pi + w + 1);
+
+              for (const ni of neighbors) {
+                if (pocketVisited[ni]) continue;
+                const n4 = ni * 4;
+                if (data[n4 + 3] < 10) { pocketVisited[ni] = 1; continue; }
+                if (!colorsMatch(data[n4], data[n4 + 1], data[n4 + 2], bgR, bgG, bgB)) {
+                  pocketVisited[ni] = 1;
+                  continue;
+                }
+                pocketVisited[ni] = 1;
+                cluster.push(ni);
+                const nx = ni % w;
+                const ny = (ni - nx) / w;
+                if (nx === 0 || nx === w - 1 || ny === 0 || ny === h - 1) touchesEdge = true;
+              }
+            }
+
+            // Only clear clusters that do NOT touch the image edge —
+            // these are interior pockets (background trapped between limbs).
+            if (!touchesEdge) {
+              for (const pi of cluster) {
+                data[pi * 4 + 3] = 0; // make transparent
+                visited[pi] = 1;
+              }
+            }
+          }
+        }
       }
 
       // --- Defringe: remove magenta colour contamination from edge pixels ---
@@ -1135,10 +1218,22 @@ function detectAndSliceSprites(dataUrl) {
         for (let d = coreThresh; d <= maxDist; d++) corePx += histogram[d];
 
         // If core < 10%, lower threshold; if core > 70%, raise it
+        // For very round/compact creatures (high maxDist, core > 60%),
+        // raise the threshold further to expose more appendage pixels.
         if (corePx < opaqueCount * 0.10) {
           coreThresh = Math.max(2, Math.round(maxDist * 0.15));
         } else if (corePx > opaqueCount * 0.70) {
           coreThresh = Math.max(2, Math.round(maxDist * 0.45));
+          // Recount
+          corePx = 0;
+          for (let d = coreThresh; d <= maxDist; d++) corePx += histogram[d];
+          // If still too large, push threshold even higher
+          if (corePx > opaqueCount * 0.70) {
+            coreThresh = Math.max(2, Math.round(maxDist * 0.55));
+          }
+        } else if (corePx > opaqueCount * 0.60) {
+          // Moderately large core — nudge the threshold up to reveal more appendages
+          coreThresh = Math.max(2, Math.round(maxDist * 0.38));
         }
 
         // ── 4. Mark core vs appendage ──
@@ -1237,7 +1332,7 @@ function detectAndSliceSprites(dataUrl) {
           const relX = (comp.cx - bodyCx) / w;
           const relY = (comp.cy - bodyCy) / h;
 
-          if (relY < -0.10) {
+          if (relY < -0.08) {
             // Above body center → head or ears
             if (!assignments.head || comp.size > assignments.head.size) {
               if (assignments.head) assignments.extraTop.push(assignments.head);
@@ -1245,12 +1340,12 @@ function detectAndSliceSprites(dataUrl) {
             } else {
               assignments.extraTop.push(comp);
             }
-          } else if (relY > 0.08) {
+          } else if (relY > 0.06) {
             // Below body center → legs / tail
-            if (relX < -0.03) {
+            if (relX < -0.02) {
               if (!assignments.leftLeg) assignments.leftLeg = comp;
               else assignments.extraBot.push(comp);
-            } else if (relX > 0.03) {
+            } else if (relX > 0.02) {
               if (!assignments.rightLeg) assignments.rightLeg = comp;
               else assignments.extraBot.push(comp);
             } else {
@@ -1279,10 +1374,12 @@ function detectAndSliceSprites(dataUrl) {
             }
           } else {
             // Middle → arms / fins / side appendages
-            if (relX < -0.04) {
+            // Use a lower threshold so small wings/flippers close to the body
+            // are still classified as arms rather than lumped into extraMid
+            if (relX < -0.02) {
               if (!assignments.leftArm) assignments.leftArm = comp;
               else assignments.extraMid.push(comp);
-            } else if (relX > 0.04) {
+            } else if (relX > 0.02) {
               if (!assignments.rightArm) assignments.rightArm = comp;
               else assignments.extraMid.push(comp);
             } else {
@@ -1308,7 +1405,11 @@ function detectAndSliceSprites(dataUrl) {
         const PART_NAMES = Object.keys(PARTS);
         const partMap = new Int8Array(N).fill(-1);
 
-        // ── 8a. Divide core vertically ──
+        // ── 8a. Divide core vertically using silhouette width analysis ──
+        // Instead of arbitrary % cuts, analyse the horizontal width profile
+        // of the creature silhouette to find natural anatomical boundaries
+        // (e.g. where the head narrows into the neck / body).
+
         let coreMinY = h, coreMaxY = 0;
         for (let i = 0; i < N; i++) {
           if (isCore[i]) {
@@ -1318,9 +1419,114 @@ function detectAndSliceSprites(dataUrl) {
           }
         }
         const coreH = coreMaxY - coreMinY + 1;
-        const headLine   = coreMinY + coreH * 0.22;
-        const neckLine   = coreMinY + coreH * 0.32;
-        const chestLine  = coreMinY + coreH * 0.58;
+
+        // Build per-row width profile of the FULL opaque silhouette
+        const rowWidth = new Float64Array(h);
+        for (let y = 0; y < h; y++) {
+          let rMin = w, rMax = 0;
+          for (let x = 0; x < w; x++) {
+            if (opaque[y * w + x]) {
+              if (x < rMin) rMin = x;
+              if (x > rMax) rMax = x;
+            }
+          }
+          rowWidth[y] = rMax >= rMin ? (rMax - rMin + 1) : 0;
+        }
+
+        // Smooth the width profile to remove noise (5-row moving average)
+        const smoothW = new Float64Array(h);
+        const SMOOTH_R = 3;
+        for (let y = 0; y < h; y++) {
+          let sum = 0, cnt = 0;
+          for (let dy = -SMOOTH_R; dy <= SMOOTH_R; dy++) {
+            const yy = y + dy;
+            if (yy >= 0 && yy < h) { sum += rowWidth[yy]; cnt++; }
+          }
+          smoothW[y] = cnt > 0 ? sum / cnt : 0;
+        }
+
+        // Find the row with maximum width (torso peak)
+        let maxWidth = 0, maxWidthY = coreMinY;
+        for (let y = coreMinY; y <= coreMaxY; y++) {
+          if (smoothW[y] > maxWidth) { maxWidth = smoothW[y]; maxWidthY = y; }
+        }
+
+        // --- Find NECK LINE: the narrowest row in the top 55% of the creature ---
+        // Only look above the widest point (head should be above torso peak)
+        const searchTop = coreMinY + Math.round(coreH * 0.08); // skip very top edge
+        const searchBot = Math.min(maxWidthY, coreMinY + Math.round(coreH * 0.55));
+        let neckY = -1;
+        let neckWidth = Infinity;
+
+        for (let y = searchTop; y <= searchBot; y++) {
+          if (smoothW[y] > 0 && smoothW[y] < neckWidth) {
+            neckWidth = smoothW[y];
+            neckY = y;
+          }
+        }
+
+        // Validate: the neck should be noticeably narrower than both the head
+        // region above it and the torso below.  If the narrowing is tiny
+        // (< 15% narrower than max width in vicinity), there's no real neck.
+        let hasNeck = false;
+        if (neckY > 0) {
+          // Check width above the neck (head region)
+          let headMaxW = 0;
+          for (let y = coreMinY; y < neckY; y++) {
+            if (smoothW[y] > headMaxW) headMaxW = smoothW[y];
+          }
+          // Check width below the neck (upper body)
+          let bodyMaxW = 0;
+          const bodyCheckEnd = Math.min(neckY + Math.round(coreH * 0.25), coreMaxY);
+          for (let y = neckY; y <= bodyCheckEnd; y++) {
+            if (smoothW[y] > bodyMaxW) bodyMaxW = smoothW[y];
+          }
+          const surroundMax = Math.max(headMaxW, bodyMaxW);
+          // Neck must be at least 15% narrower than surrounding regions
+          if (surroundMax > 0 && neckWidth < surroundMax * 0.85) {
+            hasNeck = true;
+          }
+        }
+
+        let headLine, neckLine, chestLine;
+
+        if (hasNeck) {
+          // Use the detected neck as the boundary
+          // Head = everything above neck, Neck = thin zone around narrowing,
+          // Chest/belly split at ~58% of the remaining body below neck.
+          const neckHalfBand = Math.max(2, Math.round(coreH * 0.04));
+          headLine  = neckY - neckHalfBand;
+          neckLine  = neckY + neckHalfBand;
+          const belowNeck = coreMaxY - neckLine;
+          chestLine = neckLine + belowNeck * 0.52;
+          console.log("Silhouette analysis: neck detected at row", neckY,
+            "(width", Math.round(neckWidth), "vs surround", Math.round(Math.max(neckWidth, maxWidth)), ")");
+        } else {
+          // --- No clear neck: compact/round creature (e.g. penguin) ---
+          // Use a fallback based on the width profile derivative.
+          // Find where the width starts increasing rapidly from the top
+          // (transition from head top → widening body).
+          // Place the head/neck boundary at ~28% and use wider head zone.
+          headLine  = coreMinY + coreH * 0.28;
+          neckLine  = coreMinY + coreH * 0.35;
+          chestLine = coreMinY + coreH * 0.58;
+
+          // Refine: look for the steepest width increase in the top half
+          // (where the head transitions to the wider torso)
+          let maxDerivative = 0, maxDerivY = -1;
+          for (let y = coreMinY + 2; y < coreMinY + Math.round(coreH * 0.5); y++) {
+            const deriv = smoothW[y] - smoothW[y - 2];
+            if (deriv > maxDerivative) { maxDerivative = deriv; maxDerivY = y; }
+          }
+          // If we found a clear widening, use it as a better head boundary
+          if (maxDerivY > 0 && maxDerivative > maxWidth * 0.04) {
+            headLine  = maxDerivY;
+            neckLine  = maxDerivY + Math.max(2, Math.round(coreH * 0.06));
+            console.log("Silhouette analysis: no neck, using width-increase at row", maxDerivY);
+          } else {
+            console.log("Silhouette analysis: no neck, using default proportions");
+          }
+        }
 
         for (let i = 0; i < N; i++) {
           if (isCore[i]) {
@@ -1366,17 +1572,17 @@ function detectAndSliceSprites(dataUrl) {
         }
 
         // ── 8c. Any remaining unlabelled opaque pixels → nearest zone ──
+        // Use the computed headLine/neckLine/chestLine for vertical assignment
         for (let i = 0; i < N; i++) {
           if (opaque[i] && partMap[i] === -1) {
             const x = i % w, y = (i - x) / w;
-            const relY = (y - bodyCy) / h;
             const relX = (x - bodyCx) / w;
-            if      (relY < -0.15)                        partMap[i] = PARTS.head;
-            else if (relY < -0.05)                        partMap[i] = PARTS.neck;
-            else if (relY <  0.05 && relX < -0.15)       partMap[i] = PARTS.leftShoulder;
-            else if (relY <  0.05 && relX >  0.15)       partMap[i] = PARTS.rightShoulder;
-            else if (relY <  0.05)                        partMap[i] = PARTS.chest;
-            else if (relY <  0.15)                        partMap[i] = PARTS.belly;
+            if      (y < headLine)                        partMap[i] = PARTS.head;
+            else if (y < neckLine)                        partMap[i] = PARTS.neck;
+            else if (y < chestLine && relX < -0.12)      partMap[i] = PARTS.leftShoulder;
+            else if (y < chestLine && relX >  0.12)      partMap[i] = PARTS.rightShoulder;
+            else if (y < chestLine)                       partMap[i] = PARTS.chest;
+            else if (y < coreMaxY)                        partMap[i] = PARTS.belly;
             else if (x < bodyCx)                          partMap[i] = PARTS.leftThigh;
             else                                          partMap[i] = PARTS.rightThigh;
           }
@@ -1559,7 +1765,7 @@ function sliceIntoSprites(fullDataUrl) {
 function setPetSprites(sprites) {
   petImgBase.src = TRANSPARENT_PIXEL;
   for (const [partKey, img] of Object.entries(petImgs)) {
-    if (sprites[partKey]) img.src = sprites[partKey];
+    img.src = sprites[partKey] || TRANSPARENT_PIXEL;
   }
 }
 
@@ -3595,9 +3801,10 @@ function sleep(ms) {
 
 // Set image src on base + all 13 body-part layers
 function setPetImageSrc(src) {
-  petImgBase.src = src;
+  const safeSrc = src || TRANSPARENT_PIXEL;
+  petImgBase.src = safeSrc;
   for (const img of Object.values(petImgs)) {
-    img.src = src;
+    img.src = safeSrc;
   }
 }
 
@@ -3649,15 +3856,7 @@ for (const id of ["btn-sound-lab", "btn-sound-game"]) {
   }
 }
 
-// ---------- SETTINGS BUTTONS ----------
-for (const id of ["btn-settings", "btn-settings-game"]) {
-  const btn = $(id);
-  if (btn) {
-    btn.addEventListener("click", () => {
-      PetAudio.play("click");
-    });
-  }
-}
+
 
 // ---------- SHARE BUTTON ----------
 {
