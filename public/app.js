@@ -59,6 +59,9 @@ const ROOMS = [
   { id: "breeding", name: "Breeding Room", emoji: "🥚", actions: ["breed"] },
 ];
 
+const PLATFORM_ONLY_MODE = true;
+const PLATFORM_INTERACT_RADIUS = 110;
+
 // ---------- ⭐ RARITY ----------
 const RARITY_LEVELS = [
   { name: "Common",   cls: "common",   min: 1 },
@@ -126,7 +129,7 @@ let gameState = {
   createdAt: null,
   petX: null,
   petY: null,
-  currentRoom: "feeding",
+  currentRoom: "platform",
   needs: {
     hunger: NEED_MAX,
     cleanliness: NEED_MAX,
@@ -219,12 +222,6 @@ const btnShare = $("btn-share");
 const breedNameOverlay = $("breed-name-overlay");
 const breedNameInput = $("breed-name-input");
 const breedNameConfirm = $("breed-name-confirm");
-
-// Room indicators
-const roomIndicatorLeft = $("room-indicator-left");
-const roomIndicatorRight = $("room-indicator-right");
-const roomLabelLeft = $("room-label-left");
-const roomLabelRight = $("room-label-right");
 
 // ---------- 🥚 INGREDIENT SELECTION (Dropdown + Syringe) ----------
 const syringeOverlay = $("syringe-overlay");
@@ -534,7 +531,7 @@ hatchBtn.addEventListener("click", async () => {
   gameState.createdAt = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "feeding";
+  gameState.currentRoom = "platform";
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = null;
@@ -2724,7 +2721,7 @@ async function equipPet(creature) {
   gameState.lastDecayTime = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "feeding";
+  gameState.currentRoom = "platform";
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = creature.job || null;
@@ -2938,7 +2935,7 @@ function loadGame() {
     gameState.createdAt = saved.createdAt || null;
     gameState.petX = saved.petX ?? null;
     gameState.petY = saved.petY ?? null;
-    gameState.currentRoom = saved.currentRoom || "feeding";
+    gameState.currentRoom = saved.currentRoom || "platform";
     gameState.needs = saved.needs || { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
     gameState.lastNeedDecayTime = saved.lastNeedDecayTime || Date.now();
     gameState.job = saved.job || null;
@@ -2955,6 +2952,12 @@ function loadGame() {
 // ---------- 🎭 IDLE FIDGETS ----------
 let fidgetTimer = null;
 const FIDGET_CLASSES = ["fidget-look-left", "fidget-look-right", "fidget-ear-twitch", "fidget-scratch", "fidget-yawn", "fidget-tail-wag"];
+
+const platformKeys = { w: false, a: false, s: false, d: false };
+let platformControlsBound = false;
+let platformLoopStarted = false;
+let lastPlatformTick = 0;
+const platformInteractives = [];
 
 function startIdleFidgets() {
   stopIdleFidgets();
@@ -2981,146 +2984,131 @@ function scheduleNextFidget() {
   }, delay);
 }
 
-// ---------- 🖐️ DRAG-BETWEEN-ROOMS ----------
-let isDragging = false;
-let dragOffsetX = 0;
-let dragOffsetY = 0;
-let dragStartX = 0; // track where drag started for room transition detection
-const ROOM_TRANSITION_THRESHOLD = 0.65; // drag past 65% of viewport width to switch
-
-function getRoomIndex(roomId) {
-  return ROOMS.findIndex(r => r.id === roomId);
+function triggerActionByName(action, emoji) {
+  if (action === "feed") doFeedAction(emoji);
+  else if (action === "clean") doCleanAction(emoji);
+  else if (action === "play") doPlayAction(emoji);
+  else if (action === "sleep") doSleepAction(emoji);
+  else if (action === "breed") openBreedingOverlay();
 }
 
-function getAdjacentRooms() {
-  const idx = getRoomIndex(gameState.currentRoom);
-  return {
-    left: idx > 0 ? ROOMS[idx - 1] : null,
-    right: idx < ROOMS.length - 1 ? ROOMS[idx + 1] : null,
+function getNearestPlatformProp() {
+  if (!platformInteractives.length || gameState.petX === null || gameState.petY === null) return null;
+  const size = getPetSize();
+  const petCx = gameState.petX + size / 2;
+  const petCy = gameState.petY + size / 2;
+  let best = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+
+  platformInteractives.forEach((entry) => {
+    const r = entry.el.getBoundingClientRect();
+    const worldRect = gameWorld.getBoundingClientRect();
+    const cx = r.left - worldRect.left + r.width / 2;
+    const cy = r.top - worldRect.top + r.height / 2;
+    const dx = petCx - cx;
+    const dy = petCy - cy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = entry;
+    }
+  });
+
+  if (best && bestDist <= PLATFORM_INTERACT_RADIUS) {
+    return { ...best, dist: bestDist };
+  }
+  return null;
+}
+
+function updatePlatformNearbyHighlight() {
+  platformInteractives.forEach((entry) => entry.el.classList.remove("nearby"));
+  const near = getNearestPlatformProp();
+  if (near) {
+    near.el.classList.add("nearby");
+  }
+}
+
+function startPlatformLoop() {
+  if (platformLoopStarted) return;
+  platformLoopStarted = true;
+
+  const step = (ts) => {
+    if (!lastPlatformTick) lastPlatformTick = ts;
+    const dt = Math.min(0.05, (ts - lastPlatformTick) / 1000);
+    lastPlatformTick = ts;
+
+    if (PLATFORM_ONLY_MODE && petGame.classList.contains("active") && gameState.createdAt) {
+      const speed = 220;
+      let vx = 0;
+      let vy = 0;
+      if (platformKeys.a) vx -= 1;
+      if (platformKeys.d) vx += 1;
+      if (platformKeys.w) vy -= 1;
+      if (platformKeys.s) vy += 1;
+
+      if (vx !== 0 || vy !== 0) {
+        const mag = Math.sqrt(vx * vx + vy * vy) || 1;
+        vx /= mag;
+        vy /= mag;
+        const size = getPetSize();
+        const maxX = Math.max(0, gameWorld.clientWidth - size);
+        const maxY = Math.max(0, gameWorld.clientHeight - size);
+        gameState.petX = Math.max(0, Math.min(maxX, gameState.petX + vx * speed * dt));
+        gameState.petY = Math.max(0, Math.min(maxY, gameState.petY + vy * speed * dt));
+        petParts.style.left = `${gameState.petX}px`;
+        petParts.style.top = `${gameState.petY}px`;
+      }
+
+      updatePlatformNearbyHighlight();
+    }
+
+    requestAnimationFrame(step);
   };
+
+  requestAnimationFrame(step);
 }
 
-function showRoomIndicators() {
-  const adj = getAdjacentRooms();
-  if (adj.left) {
-    roomLabelLeft.textContent = `${adj.left.emoji} ${adj.left.name}`;
-    roomIndicatorLeft.classList.remove("hidden");
-    roomIndicatorLeft.style.display = "flex";
-  }
-  if (adj.right) {
-    roomLabelRight.textContent = `${adj.right.emoji} ${adj.right.name}`;
-    roomIndicatorRight.classList.remove("hidden");
-    roomIndicatorRight.style.display = "flex";
-  }
+function bindPlatformControls() {
+  if (platformControlsBound) return;
+  platformControlsBound = true;
+
+  document.addEventListener("keydown", (e) => {
+    if (!PLATFORM_ONLY_MODE || !petGame.classList.contains("active")) return;
+    const key = e.key.toLowerCase();
+    if (key === "w") platformKeys.w = true;
+    if (key === "a") platformKeys.a = true;
+    if (key === "s") platformKeys.s = true;
+    if (key === "d") platformKeys.d = true;
+    if (key === "e") {
+      const near = getNearestPlatformProp();
+      if (near && petParts.dataset.animating !== "true") {
+        near.el.classList.add("prop-used");
+        setTimeout(() => near.el.classList.remove("prop-used"), 400);
+        triggerActionByName(near.action, near.emoji);
+      }
+    }
+  });
+
+  document.addEventListener("keyup", (e) => {
+    const key = e.key.toLowerCase();
+    if (key === "w") platformKeys.w = false;
+    if (key === "a") platformKeys.a = false;
+    if (key === "s") platformKeys.s = false;
+    if (key === "d") platformKeys.d = false;
+  });
 }
-
-function hideRoomIndicators() {
-  roomIndicatorLeft.classList.add("hidden");
-  roomIndicatorLeft.style.display = "none";
-  roomIndicatorLeft.classList.remove("glow-active");
-  roomIndicatorRight.classList.add("hidden");
-  roomIndicatorRight.style.display = "none";
-  roomIndicatorRight.classList.remove("glow-active");
-}
-
-function crawlBackToCenter() {
-  const size = getPetSize();
-  const centerX = (gameWorld.clientWidth - size) / 2;
-  const centerY = (gameWorld.clientHeight - size) / 2;
-
-  petParts.classList.add("crawl-back");
-  gameState.petX = centerX;
-  gameState.petY = centerY;
-  petParts.style.left = `${centerX}px`;
-  petParts.style.top = `${centerY}px`;
-
-  setTimeout(() => {
-    petParts.classList.remove("crawl-back");
-  }, 500);
-}
-
-petParts.addEventListener("pointerdown", (e) => {
-  if (petParts.dataset.animating === "true") return;
-  isDragging = true;
-  const rect = petParts.getBoundingClientRect();
-  dragOffsetX = e.clientX - rect.left;
-  dragOffsetY = e.clientY - rect.top;
-  dragStartX = e.clientX;
-  petParts.setPointerCapture(e.pointerId);
-  petParts.classList.add("dragging");
-  showRoomIndicators();
-  e.preventDefault();
-});
-
-document.addEventListener("pointermove", (e) => {
-  if (!isDragging) return;
-  const worldRect = gameWorld.getBoundingClientRect();
-  const size = getPetSize();
-  let newX = e.clientX - worldRect.left - dragOffsetX;
-  let newY = e.clientY - worldRect.top - dragOffsetY;
-  // Clamp vertical movement within viewport
-  newY = Math.max(0, Math.min(newY, gameWorld.clientHeight - size));
-  // Allow horizontal to go slightly past edges for transition feel
-  newX = Math.max(-size * 0.3, Math.min(newX, gameWorld.clientWidth - size * 0.7));
-  gameState.petX = newX;
-  gameState.petY = newY;
-  petParts.style.left = `${newX}px`;
-  petParts.style.top = `${newY}px`;
-
-  // Check if near edges and glow the indicators
-  const adj = getAdjacentRooms();
-  const petCenter = newX + size / 2;
-  const leftThreshold = gameWorld.clientWidth * (1 - ROOM_TRANSITION_THRESHOLD);
-  const rightThreshold = gameWorld.clientWidth * ROOM_TRANSITION_THRESHOLD;
-
-  if (adj.left && petCenter < leftThreshold) {
-    roomIndicatorLeft.classList.add("glow-active");
-  } else {
-    roomIndicatorLeft.classList.remove("glow-active");
-  }
-  if (adj.right && petCenter > rightThreshold) {
-    roomIndicatorRight.classList.add("glow-active");
-  } else {
-    roomIndicatorRight.classList.remove("glow-active");
-  }
-});
-
-document.addEventListener("pointerup", () => {
-  if (!isDragging) return;
-  isDragging = false;
-  petParts.classList.remove("dragging");
-  hideRoomIndicators();
-
-  const size = getPetSize();
-  const petCenter = gameState.petX + size / 2;
-  const adj = getAdjacentRooms();
-  const leftThreshold = gameWorld.clientWidth * (1 - ROOM_TRANSITION_THRESHOLD);
-  const rightThreshold = gameWorld.clientWidth * ROOM_TRANSITION_THRESHOLD;
-
-  // Check if pet dragged past threshold to switch rooms
-  if (adj.left && petCenter < leftThreshold) {
-    // Transition to left room
-    switchRoom(adj.left.id);
-    // Pet enters from right side, then crawls to center
-    gameState.petX = gameWorld.clientWidth - size * 0.3;
-    petParts.style.left = `${gameState.petX}px`;
-    requestAnimationFrame(() => crawlBackToCenter());
-  } else if (adj.right && petCenter > rightThreshold) {
-    // Transition to right room
-    switchRoom(adj.right.id);
-    // Pet enters from left side, then crawls to center
-    gameState.petX = -size * 0.3;
-    petParts.style.left = `${gameState.petX}px`;
-    requestAnimationFrame(() => crawlBackToCenter());
-  } else {
-    // Not past threshold — crawl back to center
-    crawlBackToCenter();
-  }
-  saveGame();
-});
 
 // ---------- 🏠 ROOM SWITCHING ----------
 function switchRoom(roomId) {
+  if (PLATFORM_ONLY_MODE) {
+    const room = { id: "platform", name: "Pet Platform", emoji: "🧩" };
+    gameState.currentRoom = "platform";
+    roomBg.className = "room-bg room-platform";
+    updateRoomProps(room);
+    updateRoomNameBadge(room);
+    return;
+  }
+
   const room = ROOMS.find(r => r.id === roomId);
   if (!room) return;
   gameState.currentRoom = roomId;
@@ -3145,6 +3133,48 @@ function updateRoomProps(room) {
   const propsContainer = $("room-props");
   if (!propsContainer) return;
   propsContainer.innerHTML = "";
+  platformInteractives.length = 0;
+
+  if (PLATFORM_ONLY_MODE || room.id === "platform") {
+    const platformProps = [
+      { emoji: "🥣", x: "10%", y: "70%", size: "2.9rem", action: "feed", hint: "Food" },
+      { emoji: "🧼", x: "28%", y: "58%", size: "2.7rem", action: "clean", hint: "Shower" },
+      { emoji: "🎾", x: "72%", y: "64%", size: "2.8rem", action: "play", hint: "Toy" },
+      { emoji: "🛏️", x: "84%", y: "72%", size: "3rem", action: "sleep", hint: "Sleep" },
+      { emoji: "🥚", x: "46%", y: "60%", size: "2.8rem", action: "breed", hint: "Breed" },
+      { emoji: "🌿", x: "6%", y: "24%", size: "1.9rem" },
+      { emoji: "🌟", x: "90%", y: "20%", size: "1.7rem" },
+      { emoji: "☁️", x: "40%", y: "14%", size: "2rem" },
+    ];
+
+    platformProps.forEach((p) => {
+      const el = document.createElement("div");
+      el.className = "room-prop";
+      el.textContent = p.emoji;
+      el.style.left = p.x;
+      el.style.top = p.y;
+      el.style.fontSize = p.size;
+      if (p.action) {
+        el.classList.add("interactive");
+        el.dataset.action = p.action;
+        el.dataset.emoji = p.emoji;
+        const hint = document.createElement("span");
+        hint.className = "prop-hint";
+        hint.textContent = `${p.hint || p.action} (E)`;
+        el.appendChild(hint);
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (petParts.dataset.animating === "true") return;
+          el.classList.add("prop-used");
+          setTimeout(() => el.classList.remove("prop-used"), 400);
+          triggerActionByName(p.action, p.emoji);
+        });
+        platformInteractives.push({ el, action: p.action, emoji: p.emoji });
+      }
+      propsContainer.appendChild(el);
+    });
+    return;
+  }
 
   // Breeding room has special interactive boxes
   if (room.id === "breeding") {
@@ -3553,7 +3583,7 @@ btnBreedGo.addEventListener("click", async () => {
   gameState.createdAt = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "feeding";
+  gameState.currentRoom = "platform";
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = null;
@@ -3731,6 +3761,9 @@ async function triggerPlayAnimation(emoji) {
 
 // ---------- 🚀 STARTUP ----------
 async function init() {
+  bindPlatformControls();
+  startPlatformLoop();
+
   // Migrate old localStorage gallery to IndexedDB (one-time)
   await PetDB.migrateFromLocalStorage();
 
@@ -3742,7 +3775,7 @@ async function init() {
 
     // Position pet in viewport
     positionPet();
-    switchRoom(gameState.currentRoom);
+    switchRoom(gameState.currentRoom || "platform");
 
     // Apply missed decay
     applyMissedDecay();
