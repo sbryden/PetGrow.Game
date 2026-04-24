@@ -14,12 +14,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const headerApiKey = (req.headers['x-gemini-api-key'] || '').toString().trim();
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.API_KEY ||
+    headerApiKey;
   if (!apiKey) {
     return res.status(500).json({ error: 'API key not configured' });
   }
 
-  const model = req.body?.model || 'gemini-2.5-flash-image';
+  const ALLOWED_MODELS = [
+    'gemini-2.5-flash-image',
+    'gemini-2.0-flash-exp',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+  ];
+  const requestedModel = (req.body?.model || '').toString().trim();
+  const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : 'gemini-2.5-flash-image';
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   try {

@@ -6,6 +6,8 @@
 // ---------- 🔑 GEMINI API (proxied through /api/generate) ----------
 const GEMINI_MODEL = "gemini-2.5-flash-image";
 const GEMINI_URL = "/api/generate";
+const CLIENT_API_KEY_STORAGE_KEY = "petgrow_gemini_api_key";
+const CREATURE_PERFECTION_MAX_ATTEMPTS = 3;
 
 // ---------- 🎮 GAME CONSTANTS ----------
 const LEVEL_BABY = "Baby";
@@ -16,7 +18,7 @@ const TEEN_THRESHOLD = 20;
 const LEGEND_THRESHOLD = 50;
 
 const DECAY_INTERVAL_MS = 60 * 60 * 1000; // 1 hour in milliseconds
-const SAVE_KEY = "petgrow_save";
+const SAVE_KEY = "petgrow_save"; // legacy localStorage key kept for migration
 
 // ---------- 💼 PET JOBS ----------
 const PET_JOBS = [
@@ -140,7 +142,11 @@ let gameState = {
   job: null,              // chosen job id (string) or null
   parentJobs: [],         // job ids from parents (excluded from selection for bred pets)
   bgCleaned: {},          // tracks which cached images already had bg removed
+  renderModes: {},        // per-level render mode: sliced or full
 };
+
+let saveGameTimer = null;
+let pendingSavePromise = Promise.resolve();
 
 // ---------- 📦 DOM ELEMENTS ----------
 const $ = (id) => document.getElementById(id);
@@ -384,6 +390,8 @@ let lampTotalTime = 0;
 let lampInterval = null;
 let lampResolve = null;
 let lampKeyHandler = null;
+let lampTapHandler = null;
+let lampScene = null;
 
 function startHeatLampGame() {
   return new Promise((resolve) => {
@@ -419,12 +427,12 @@ function startHeatLampGame() {
     document.addEventListener("keydown", lampKeyHandler);
 
     // Also support tapping the lamp scene for mobile
-    const lampScene = document.querySelector(".lamp-scene");
-    const tapHandler = () => {
+    lampScene = document.querySelector(".lamp-scene");
+    lampTapHandler = () => {
       lampOn = !lampOn;
       updateLampVisuals();
     };
-    lampScene.addEventListener("click", tapHandler);
+    lampScene.addEventListener("click", lampTapHandler);
 
     // Game loop
     lampInterval = setInterval(() => {
@@ -488,6 +496,11 @@ function endHeatLampGame() {
   clearInterval(lampInterval);
   lampInterval = null;
   document.removeEventListener("keydown", lampKeyHandler);
+  if (lampScene && lampTapHandler) {
+    lampScene.removeEventListener("click", lampTapHandler);
+    lampTapHandler = null;
+    lampScene = null;
+  }
 
   const greenPct = lampTotalTime > 0 ? (lampGreenTime / lampTotalTime) * 100 : 0;
 
@@ -605,7 +618,7 @@ function sanitizeName(name) {
   return name.replace(/[^a-zA-Z0-9 \-_'.!]/g, '').slice(0, 30);
 }
 
-function buildPrompt(level) {
+function buildPrompt(level, refinementNotes = "") {
   const { animal, color, wildcard, element } = gameState.ingredients;
 
   // Build the creature description
@@ -639,7 +652,11 @@ function buildPrompt(level) {
   if (wildcard) desc += `, featuring a ${wildcard} as part of its body or as an accessory`;
   if (element) desc += `, with a ${element} texture`;
 
-  const prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Draw the creature LARGE so it fills at least 80% of the image — do not leave large empty margins. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered, facing the viewer, standing upright in a symmetrical A-pose with arms, fins, or limbs slightly spread away from the body. The head should be clearly distinct from the torso with a visible neck or narrowing between them. All limbs and appendages should have clear separation from the torso — no limbs pressed flat against the body. Full body visible including all limbs, fins, tentacles, or appendages. No text in the image.`;
+  let prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Draw the creature LARGE so it fills at least 80% of the image — do not leave large empty margins. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered, facing the viewer, standing upright in a symmetrical A-pose with arms, fins, or limbs slightly spread away from the body. The head should be clearly distinct from the torso with a visible neck or narrowing between them. All limbs and appendages should have clear separation from the torso — no limbs pressed flat against the body. Full body visible including all limbs, fins, tentacles, or appendages. No text in the image.`;
+
+  if (refinementNotes) {
+    prompt += ` ${refinementNotes}`;
+  }
 
   return prompt;
 }
@@ -656,6 +673,187 @@ function buildDescription() {
 
 // Flag to suppress the loading spinner when hatching/evolution overlay is visible
 let suppressSpinner = false;
+
+function getClientGeminiApiKey() {
+  try {
+    return (localStorage.getItem(CLIENT_API_KEY_STORAGE_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function setClientGeminiApiKey(value) {
+  try {
+    const key = (value || "").trim();
+    if (key) localStorage.setItem(CLIENT_API_KEY_STORAGE_KEY, key);
+    else localStorage.removeItem(CLIENT_API_KEY_STORAGE_KEY);
+  } catch {
+    // ignore storage errors (private mode, quota, etc.)
+  }
+}
+
+function askForClientGeminiApiKey() {
+  const entered = window.prompt(
+    "Server API key is missing. Paste your Gemini API key to continue (saved only in this browser)."
+  );
+  const key = (entered || "").trim();
+  if (!key) return "";
+  setClientGeminiApiKey(key);
+  return key;
+}
+
+function isMissingServerApiKey(status, errorText) {
+  if (status !== 500) return false;
+  return /api key not configured|api key missing|missing api key/i.test(errorText || "");
+}
+
+function buildGeminiPayload(prompt) {
+  return {
+    model: GEMINI_MODEL,
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseModalities: ["TEXT", "IMAGE"],
+      imageConfig: {
+        aspectRatio: "1:1"
+      },
+    },
+  };
+}
+
+function isTransparentSpriteValue(value) {
+  return !value || value === TRANSPARENT_PIXEL;
+}
+
+function scoreNormalizedCreatureRender(normalized) {
+  const sprites = normalized?.sprites || {};
+  const boxes = normalized?.boxes || {};
+  const issues = [];
+  let score = 0;
+
+  const headReady = !isTransparentSpriteValue(sprites.hat) && !isTransparentSpriteValue(sprites.face);
+  const torsoReady = !isTransparentSpriteValue(sprites.chest) && !isTransparentSpriteValue(sprites.belly);
+  const leftArmReady = !isTransparentSpriteValue(sprites.leftBicep) || !isTransparentSpriteValue(sprites.leftForearm);
+  const rightArmReady = !isTransparentSpriteValue(sprites.rightBicep) || !isTransparentSpriteValue(sprites.rightForearm);
+  const leftLegReady = !isTransparentSpriteValue(sprites.leftThigh) || !isTransparentSpriteValue(sprites.leftFoot);
+  const rightLegReady = !isTransparentSpriteValue(sprites.rightThigh) || !isTransparentSpriteValue(sprites.rightFoot);
+
+  if (headReady) score += 3;
+  else issues.push("missing-head");
+
+  if (torsoReady) score += 3;
+  else issues.push("missing-torso");
+
+  if (leftArmReady) score += 1;
+  else issues.push("missing-left-arm");
+
+  if (rightArmReady) score += 1;
+  else issues.push("missing-right-arm");
+
+  if (leftLegReady) score += 1;
+  else issues.push("missing-left-leg");
+
+  if (rightLegReady) score += 1;
+  else issues.push("missing-right-leg");
+
+  const headBox = boxes.head;
+  if (!headBox) {
+    issues.push("missing-head-box");
+  } else {
+    const headWidth = headBox.maxX - headBox.minX;
+    const headHeight = headBox.maxY - headBox.minY;
+    if (headWidth >= 18 && headHeight >= 14) score += 2;
+    else issues.push("tiny-head-box");
+    if (headBox.minY <= 35) score += 1;
+    else issues.push("head-too-low");
+  }
+
+  return {
+    ok: headReady && torsoReady && score >= 8,
+    score,
+    issues,
+  };
+}
+
+async function fetchGeminiImageData(prompt) {
+  const payload = buildGeminiPayload(prompt);
+  let response = await callGeminiProxy(payload);
+
+  if (!response.ok) {
+    const errText = await response.text();
+
+    if (isMissingServerApiKey(response.status, errText)) {
+      let clientKey = getClientGeminiApiKey();
+      if (!clientKey) clientKey = askForClientGeminiApiKey();
+
+      if (clientKey) {
+        response = await callGeminiProxy(payload, clientKey);
+        if (!response.ok) {
+          const retryErrText = await response.text();
+          throw new Error(`API error ${response.status}: ${retryErrText}`);
+        }
+      } else {
+        throw new Error("Server API key missing and no browser API key was provided.");
+      }
+    } else {
+      throw new Error(`API error ${response.status}: ${errText}`);
+    }
+  }
+
+  const data = await response.json();
+
+  let imageBase64 = null;
+  let mimeType = "image/png";
+
+  if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+    for (const part of data.candidates[0].content.parts) {
+      if (part.inlineData) {
+        imageBase64 = part.inlineData.data;
+        mimeType = part.inlineData.mimeType || "image/png";
+        break;
+      }
+    }
+  }
+
+  if (!imageBase64) {
+    throw new Error("No image data in response");
+  }
+
+  return {
+    dataUrl: `data:${mimeType};base64,${imageBase64}`,
+    mimeType,
+  };
+}
+
+async function prepareCreatureCandidate(prompt) {
+  const { dataUrl } = await fetchGeminiImageData(prompt);
+  const noBg = await removeImageBackground(dataUrl);
+  const cropped = await cropToContent(noBg, 512, 512);
+  const compressed = await compressImage(cropped, 512, 512);
+  const detected = await detectAndSliceSprites(compressed);
+  const normalized = detected ? normalizeDetectedResult(detected) : null;
+  const quality = normalized
+    ? scoreNormalizedCreatureRender(normalized)
+    : { ok: false, score: 0, issues: ["detection-failed"] };
+
+  return {
+    compressed,
+    normalized,
+    quality,
+  };
+}
+
+async function callGeminiProxy(payload, overrideApiKey = "") {
+  const headers = { "Content-Type": "application/json" };
+  if (overrideApiKey) {
+    headers["x-gemini-api-key"] = overrideApiKey;
+  }
+
+  return fetch(GEMINI_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+}
 
 // ---------- 🤖 GEMINI API ----------
 async function generateCreatureImage(level) {
@@ -678,62 +876,60 @@ async function generateCreatureImage(level) {
     loadingSpinner.style.display = "flex";
   }
 
-  const prompt = buildPrompt(level);
-  console.log("Gemini prompt:", prompt);
-
   try {
-    const response = await fetch(GEMINI_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: GEMINI_MODEL,
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseModalities: ["TEXT", "IMAGE"],
-          imageConfig: {
-            aspectRatio: "1:1"
-          },
-        },
-      }),
-    });
+    let bestCandidate = null;
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`API error ${response.status}: ${errText}`);
-    }
+    for (let attempt = 1; attempt <= CREATURE_PERFECTION_MAX_ATTEMPTS; attempt++) {
+      const refinementNotes = attempt > 1
+        ? "Correction pass: perfect the anatomy. No missing forehead, no missing limbs, no broken silhouette, no holes in the body, no cut-off appendages, and keep the whole creature fully intact and readable."
+        : "";
+      const prompt = buildPrompt(level, refinementNotes);
+      console.log(`Gemini prompt attempt ${attempt}:`, prompt);
 
-    const data = await response.json();
-
-    // Find the image part in the response
-    let imageBase64 = null;
-    let mimeType = "image/png";
-
-    if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      for (const part of data.candidates[0].content.parts) {
-        if (part.inlineData) {
-          imageBase64 = part.inlineData.data;
-          mimeType = part.inlineData.mimeType || "image/png";
-          break;
-        }
+      if (!hatchingOverlay.classList.contains("hidden")) {
+        hatchingText.textContent = attempt === 1
+          ? "Growing your creature..."
+          : `Perfecting your creature... (${attempt}/${CREATURE_PERFECTION_MAX_ATTEMPTS})`;
       }
+
+      const candidate = await prepareCreatureCandidate(prompt);
+
+      if (!bestCandidate || candidate.quality.score > bestCandidate.quality.score) {
+        bestCandidate = candidate;
+      }
+
+      if (candidate.quality.ok) {
+        bestCandidate = candidate;
+        break;
+      }
+
+      console.warn("Creature quality check failed:", candidate.quality.issues);
     }
 
-    if (!imageBase64) {
-      throw new Error("No image data in response");
+    if (!bestCandidate) {
+      throw new Error("No creature candidate could be prepared");
     }
 
-    // Remove background, crop to content, then resize before caching
-    const dataUrl = `data:${mimeType};base64,${imageBase64}`;
-    const noBg = await removeImageBackground(dataUrl);
-    const cropped = await cropToContent(noBg, 512, 512);
-    const compressed = await compressImage(cropped, 512, 512);
-
-    // Cache the full image
-    gameState.cachedImages[level] = compressed;
+    gameState.cachedImages[level] = bestCandidate.compressed;
     creatureDesc.textContent = buildDescription();
 
-    // Slice into per-part sprites and apply
-    await applyCreatureSprites(level, compressed);
+    if (!gameState.renderModes) gameState.renderModes = {};
+
+    if (bestCandidate.normalized && bestCandidate.quality.ok) {
+      gameState.renderModes[level] = "sliced";
+      spriteCache[level] = bestCandidate.normalized.sprites;
+      setPetSprites(bestCandidate.normalized.sprites);
+      applyPartStyles(bestCandidate.normalized.centers, bestCandidate.normalized.boxes);
+    } else {
+      console.warn("Showing full creature image because the sliced version still looked imperfect.");
+      gameState.renderModes[level] = "full";
+      petImgBase.src = bestCandidate.compressed;
+      for (const img of Object.values(petImgs)) {
+        img.src = TRANSPARENT_PIXEL;
+      }
+      applyPartStyles(null, null);
+    }
+
     saveGame();
 
   } catch (err) {
@@ -759,7 +955,7 @@ function removeImageBackground(dataUrl) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const canvas = $("compress-canvas");
+      const canvas = document.createElement("canvas");
       const w = img.naturalWidth;
       const h = img.naturalHeight;
       canvas.width = w;
@@ -1021,7 +1217,7 @@ function compressImage(dataUrl, maxW, maxH) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const canvas = $("compress-canvas");
+      const canvas = document.createElement("canvas");
       canvas.width = maxW;
       canvas.height = maxH;
       const ctx = canvas.getContext("2d");
@@ -1395,9 +1591,21 @@ function detectAndSliceSprites(dataUrl) {
 
         // ── 8. Part assignment map ──
         const PARTS = {
-          head: 0, neck: 1, leftShoulder: 2, leftHand: 3,
-          rightShoulder: 4, rightHand: 5, chest: 6, belly: 7,
-          leftThigh: 8, leftFoot: 9, rightThigh: 10, rightFoot: 11, tail: 12,
+          head: 0,
+          neck: 1,
+          leftBicep: 2,
+          leftForearm: 3,
+          rightBicep: 4,
+          rightForearm: 5,
+          chest: 6,
+          belly: 7,
+          leftThigh: 8,
+          leftShin: 9,
+          leftFoot: 10,
+          rightThigh: 11,
+          rightShin: 12,
+          rightFoot: 13,
+          tail: 14,
         };
         const PART_NAMES = Object.keys(PARTS);
         const partMap = new Int8Array(N).fill(-1);
@@ -1545,6 +1753,19 @@ function detectAndSliceSprites(dataUrl) {
           }
         }
 
+        function assignLegAppendage(comp, thighPart, shinPart, footPart) {
+          if (!comp) return;
+          const legHeight = comp.maxY - comp.minY;
+          const shinStart = comp.minY + legHeight * 0.55;
+          const footStart = comp.minY + legHeight * 0.82;
+          for (const pi of comp.pixels) {
+            const y = (pi / w) | 0;
+            if (y < shinStart) partMap[pi] = thighPart;
+            else if (y < footStart) partMap[pi] = shinPart;
+            else partMap[pi] = footPart;
+          }
+        }
+
         // Head appendage → all head
         if (assignments.head) {
           for (const pi of assignments.head.pixels) partMap[pi] = PARTS.head;
@@ -1554,10 +1775,10 @@ function detectAndSliceSprites(dataUrl) {
           for (const pi of comp.pixels) partMap[pi] = PARTS.head;
         }
 
-        assignAppendage(assignments.leftArm,  PARTS.leftShoulder, PARTS.leftHand);
-        assignAppendage(assignments.rightArm, PARTS.rightShoulder, PARTS.rightHand);
-        assignAppendage(assignments.leftLeg,  PARTS.leftThigh, PARTS.leftFoot);
-        assignAppendage(assignments.rightLeg, PARTS.rightThigh, PARTS.rightFoot);
+        assignAppendage(assignments.leftArm, PARTS.leftBicep, PARTS.leftForearm);
+        assignAppendage(assignments.rightArm, PARTS.rightBicep, PARTS.rightForearm);
+        assignLegAppendage(assignments.leftLeg, PARTS.leftThigh, PARTS.leftShin, PARTS.leftFoot);
+        assignLegAppendage(assignments.rightLeg, PARTS.rightThigh, PARTS.rightShin, PARTS.rightFoot);
 
         if (assignments.tail) {
           for (const pi of assignments.tail.pixels) partMap[pi] = PARTS.tail;
@@ -1576,8 +1797,8 @@ function detectAndSliceSprites(dataUrl) {
             const relX = (x - bodyCx) / w;
             if      (y < headLine)                        partMap[i] = PARTS.head;
             else if (y < neckLine)                        partMap[i] = PARTS.neck;
-            else if (y < chestLine && relX < -0.12)      partMap[i] = PARTS.leftShoulder;
-            else if (y < chestLine && relX >  0.12)      partMap[i] = PARTS.rightShoulder;
+            else if (y < chestLine && relX < -0.12)      partMap[i] = PARTS.leftBicep;
+            else if (y < chestLine && relX >  0.12)      partMap[i] = PARTS.rightBicep;
             else if (y < chestLine)                       partMap[i] = PARTS.chest;
             else if (y < coreMaxY)                        partMap[i] = PARTS.belly;
             else if (x < bodyCx)                          partMap[i] = PARTS.leftThigh;
@@ -1801,27 +2022,115 @@ function applyPartStyles(centers, boxes) {
 }
 
 /**
+ * Normalize detector output keys to the DOM layer schema used by petImgs.
+ * The detector may emit either legacy anatomical names or the newer split
+ * limb names, while rendering uses rigging-layer names (hat, face, leftBicep, ...).
+ */
+function normalizeDetectedResult(result) {
+  if (!result || !result.sprites) return result;
+
+  const srcSprites = result.sprites;
+  const srcCenters = result.centers || {};
+  const srcBoxes = result.boxes || {};
+
+  const outSprites = {};
+  const outCenters = {};
+  const outBoxes = {};
+
+  const spriteMap = {
+    hat: ["head"],
+    face: ["head"],
+    leftEye: ["head"],
+    rightEye: ["head"],
+    neck: ["neck", "chest"],
+    leftBicep: ["leftBicep", "leftShoulder", "chest"],
+    leftForearm: ["leftForearm", "leftHand", "leftBicep", "leftShoulder", "chest"],
+    rightBicep: ["rightBicep", "rightShoulder", "chest"],
+    rightForearm: ["rightForearm", "rightHand", "rightBicep", "rightShoulder", "chest"],
+    chest: ["chest", "belly"],
+    belly: ["belly", "chest"],
+    tail: ["tail", "belly"],
+    leftThigh: ["leftThigh", "belly"],
+    leftShin: ["leftShin", "leftFoot", "leftThigh", "belly"],
+    leftFoot: ["leftFoot", "leftShin", "leftThigh", "belly"],
+    rightThigh: ["rightThigh", "belly"],
+    rightShin: ["rightShin", "rightFoot", "rightThigh", "belly"],
+    rightFoot: ["rightFoot", "rightShin", "rightThigh", "belly"],
+  };
+
+  for (const partKey of Object.keys(petImgs)) {
+    const candidates = spriteMap[partKey] || [partKey];
+    let picked = null;
+    for (const c of candidates) {
+      if (srcSprites[c]) {
+        picked = c;
+        break;
+      }
+    }
+
+    if (!picked) {
+      outSprites[partKey] = TRANSPARENT_PIXEL;
+      continue;
+    }
+
+    outSprites[partKey] = srcSprites[picked] || TRANSPARENT_PIXEL;
+    if (srcCenters[picked]) outCenters[partKey] = srcCenters[picked];
+    if (srcBoxes[picked]) outBoxes[partKey] = srcBoxes[picked];
+  }
+
+  // Keep a head entry for eyelid placement.
+  if (!outBoxes.head && srcBoxes.head) outBoxes.head = srcBoxes.head;
+
+  return {
+    sprites: outSprites,
+    centers: outCenters,
+    boxes: outBoxes,
+  };
+}
+
+function applyDetectedResultToPet(level, result) {
+  if (!result) return;
+  const normalized = normalizeDetectedResult(result);
+  if (!gameState.renderModes) gameState.renderModes = {};
+  gameState.renderModes[level] = "sliced";
+  spriteCache[level] = normalized.sprites;
+  setPetSprites(normalized.sprites);
+  applyPartStyles(normalized.centers, normalized.boxes);
+}
+
+/**
  * Detect body parts at the pixel level, create masked sprites,
  * apply to the DOM, and set matching inline styles.
  * Falls back to the static polygon approach if detection fails.
  */
 async function applyCreatureSprites(level, dataUrl) {
+  if (gameState.renderModes && gameState.renderModes[level] === "full") {
+    petImgBase.src = dataUrl || TRANSPARENT_PIXEL;
+    for (const img of Object.values(petImgs)) {
+      img.src = TRANSPARENT_PIXEL;
+    }
+    applyPartStyles(null, null);
+    return;
+  }
+
   // Try pixel-level body detection
   const result = await detectAndSliceSprites(dataUrl);
 
   if (result) {
-    spriteCache[level] = result.sprites;
-    setPetSprites(result.sprites);
-    applyPartStyles(result.centers, result.boxes);
+    applyDetectedResultToPet(level, result);
   } else {
     // Fallback to static polygon clips
     console.warn("Pixel detection failed, using polygon fallback");
     const sprites = await sliceIntoSprites(dataUrl);
     if (sprites) {
+      if (!gameState.renderModes) gameState.renderModes = {};
+      gameState.renderModes[level] = "sliced";
       spriteCache[level] = sprites;
       setPetSprites(sprites);
       applyPartStyles(null, null);
     } else {
+      if (!gameState.renderModes) gameState.renderModes = {};
+      gameState.renderModes[level] = "full";
       setPetImageSrc(dataUrl);
       applyPartStyles(null, null);
     }
@@ -1840,10 +2149,19 @@ function positionPet() {
   if (!gameWorld) return;
 
   const size = getPetSize();
+  const maxX = Math.max(0, gameWorld.clientWidth - size);
+  const maxY = Math.max(0, gameWorld.clientHeight - size);
+  const centeredY = (gameWorld.clientHeight - size) / 2;
+  const isLegacyCenteredY = gameState.petY !== null && Math.abs(gameState.petY - centeredY) < 2;
 
-  // Always center pet in the room viewport
-  gameState.petX = (gameWorld.clientWidth - size) / 2;
-  gameState.petY = (gameWorld.clientHeight - size) / 2;
+  // Spawn on the platform floor and migrate old centered saves.
+  if (gameState.petX === null || gameState.petY === null || isLegacyCenteredY) {
+    gameState.petX = maxX / 2;
+    gameState.petY = Math.max(0, maxY - 14);
+  } else {
+    gameState.petX = Math.max(0, Math.min(maxX, gameState.petX));
+    gameState.petY = Math.max(0, Math.min(maxY, gameState.petY));
+  }
 
   petParts.style.left = `${gameState.petX}px`;
   petParts.style.top = `${gameState.petY}px`;
@@ -2090,13 +2408,7 @@ async function checkDevolution() {
     } else if (gameState.cachedImages[newLevel]) {
       setPetImageSrc(gameState.cachedImages[newLevel]);
       // Async detect + slice for better display
-      detectAndSliceSprites(gameState.cachedImages[newLevel]).then(result => {
-        if (result) {
-          spriteCache[newLevel] = result.sprites;
-          setPetSprites(result.sprites);
-          applyPartStyles(result.centers, result.boxes);
-        }
-      });
+      applyCreatureSprites(newLevel, gameState.cachedImages[newLevel]);
     }
 
     updateGameDisplay();
@@ -2475,7 +2787,7 @@ statusPopup.addEventListener("click", (e) => {
 btnNewCreature.addEventListener("click", async () => {
   if (confirm("Start over with a new creature? Your current pet will be saved to the gallery!")) {
     await saveToGallery();
-    localStorage.removeItem(SAVE_KEY);
+    await PetDB.clearActiveGame();
     location.reload();
   }
 });
@@ -2492,7 +2804,7 @@ btnDiscard.addEventListener("click", () => {
 discardYes.addEventListener("click", async () => {
   discardOverlay.classList.add("hidden");
   await saveToGallery();
-  localStorage.removeItem(SAVE_KEY);
+  await PetDB.clearActiveGame();
   location.reload();
 });
 
@@ -2531,6 +2843,7 @@ async function saveToGallery() {
       clicks: gameState.clicks,
       level: gameState.level,
       cachedImages: { ...gameState.cachedImages },
+      renderModes: { ...gameState.renderModes },
       createdAt: gameState.createdAt,
       archivedAt: Date.now(),
       job: gameState.job || null,
@@ -2727,6 +3040,7 @@ async function equipPet(creature) {
   gameState.job = creature.job || null;
   gameState.parentJobs = creature.parentJobs || [];
   gameState.bgCleaned = {};
+  gameState.renderModes = creature.renderModes || {};
 
   // Clear sprite cache
   Object.keys(spriteCache).forEach(k => delete spriteCache[k]);
@@ -2738,12 +3052,7 @@ async function equipPet(creature) {
 
     // Process bg removal + detect & slice into sprites
     const processAndSlice = async (imgData) => {
-      const result = await detectAndSliceSprites(imgData);
-      if (result) {
-        spriteCache[gameState.level] = result.sprites;
-        setPetSprites(result.sprites);
-        applyPartStyles(result.centers, result.boxes);
-      }
+      await applyCreatureSprites(gameState.level, imgData);
     };
 
     removeImageBackground(raw).then(async (clean) => {
@@ -2901,7 +3210,10 @@ function applyMissedDecay() {
   const missedDecays = Math.floor(elapsed / DECAY_INTERVAL_MS);
 
   if (missedDecays > 0 && gameState.clicks > 0) {
-    const actualDecay = Math.min(missedDecays, gameState.clicks);
+    // Cap at 20 ticks (20 hours) to match the needs decay cap and prevent
+    // extremely long offline periods zeroing out all progress at once.
+    const cappedDecays = Math.min(missedDecays, 20);
+    const actualDecay = Math.min(cappedDecays, gameState.clicks);
     gameState.clicks -= actualDecay;
     gameState.lastDecayTime = now;
     console.log(`⏰ Applied ${actualDecay} missed decays. Clicks now: ${gameState.clicks}`);
@@ -2909,21 +3221,51 @@ function applyMissedDecay() {
 }
 
 // ---------- 💾 SAVE & LOAD ----------
-function saveGame() {
-  try {
-    const saveData = JSON.stringify(gameState);
-    localStorage.setItem(SAVE_KEY, saveData);
-  } catch (err) {
-    console.warn("Failed to save game:", err);
-  }
+function buildSaveSnapshot() {
+  return {
+    ...gameState,
+    ingredients: { ...gameState.ingredients },
+    cachedImages: { ...gameState.cachedImages },
+    needs: { ...gameState.needs },
+    parentJobs: [...gameState.parentJobs],
+    bgCleaned: { ...gameState.bgCleaned },
+    renderModes: { ...gameState.renderModes },
+  };
 }
 
-function loadGame() {
-  try {
-    const data = localStorage.getItem(SAVE_KEY);
-    if (!data) return false;
+function persistGameNow() {
+  pendingSavePromise = pendingSavePromise
+    .catch(() => {})
+    .then(() => PetDB.saveActiveGame(buildSaveSnapshot()))
+    .catch((err) => {
+      console.warn("Failed to save game:", err);
+    });
 
-    const saved = JSON.parse(data);
+  return pendingSavePromise;
+}
+
+function saveGame(immediate = false) {
+  if (saveGameTimer) {
+    clearTimeout(saveGameTimer);
+    saveGameTimer = null;
+  }
+
+  if (immediate) {
+    return persistGameNow();
+  }
+
+  saveGameTimer = setTimeout(() => {
+    saveGameTimer = null;
+    void persistGameNow();
+  }, 120);
+
+  return pendingSavePromise;
+}
+
+async function loadGame() {
+  try {
+    const saved = await PetDB.loadActiveGame();
+    if (!saved) return false;
 
     // Restore state
     gameState.ingredients = saved.ingredients || gameState.ingredients;
@@ -2941,6 +3283,7 @@ function loadGame() {
     gameState.job = saved.job || null;
     gameState.parentJobs = saved.parentJobs || [];
     gameState.bgCleaned = saved.bgCleaned || {};
+    gameState.renderModes = saved.renderModes || {};
 
     return true;
   } catch (err) {
@@ -2958,6 +3301,7 @@ let platformControlsBound = false;
 let platformLoopStarted = false;
 let lastPlatformTick = 0;
 const platformInteractives = [];
+const platformCamera = { x: 0, y: 0, tilt: 0, dirX: 0, dirY: 0 };
 
 function startIdleFidgets() {
   stopIdleFidgets();
@@ -3028,6 +3372,40 @@ function updatePlatformNearbyHighlight() {
   }
 }
 
+function updatePlatformSceneMotion(dt, moving, vx = 0, vy = 0) {
+  if (!gameWorld || gameState.petX === null || gameState.petY === null) return;
+
+  const size = getPetSize();
+  const petCx = gameState.petX + size / 2;
+  const petCy = gameState.petY + size / 2;
+  const worldW = Math.max(1, gameWorld.clientWidth);
+  const worldH = Math.max(1, gameWorld.clientHeight);
+  const followEase = Math.min(1, dt * (moving ? 10 : 4));
+  const targetDirX = moving ? vx : 0;
+  const targetDirY = moving ? vy : 0;
+  platformCamera.dirX += (targetDirX - platformCamera.dirX) * followEase;
+  platformCamera.dirY += (targetDirY - platformCamera.dirY) * followEase;
+
+  const trailingDistance = Math.min(72, worldW * 0.1);
+  const elevatedLook = Math.min(60, worldH * 0.14);
+  const focusX = petCx - platformCamera.dirX * trailingDistance;
+  const focusY = petCy - elevatedLook - platformCamera.dirY * (trailingDistance * 0.35);
+  const nx = focusX / worldW - 0.5;
+  const ny = focusY / worldH - 0.5;
+  const targetX = -nx * 96;
+  const targetY = -ny * 68;
+  const moveTilt = moving ? vx * 3.2 : 0;
+  const ease = Math.min(1, dt * 6.5);
+
+  platformCamera.x += (targetX - platformCamera.x) * ease;
+  platformCamera.y += (targetY - platformCamera.y) * ease;
+  platformCamera.tilt += (moveTilt - platformCamera.tilt) * Math.min(1, dt * 8);
+
+  gameWorld.style.setProperty("--cam-x", `${platformCamera.x.toFixed(2)}px`);
+  gameWorld.style.setProperty("--cam-y", `${platformCamera.y.toFixed(2)}px`);
+  gameWorld.style.setProperty("--cam-tilt", `${platformCamera.tilt.toFixed(2)}deg`);
+}
+
 function startPlatformLoop() {
   if (platformLoopStarted) return;
   platformLoopStarted = true;
@@ -3046,7 +3424,9 @@ function startPlatformLoop() {
       if (platformKeys.w) vy -= 1;
       if (platformKeys.s) vy += 1;
 
-      if (vx !== 0 || vy !== 0) {
+      const moving = vx !== 0 || vy !== 0;
+
+      if (moving) {
         const mag = Math.sqrt(vx * vx + vy * vy) || 1;
         vx /= mag;
         vy /= mag;
@@ -3059,6 +3439,7 @@ function startPlatformLoop() {
         petParts.style.top = `${gameState.petY}px`;
       }
 
+      updatePlatformSceneMotion(dt, moving, vx, vy);
       updatePlatformNearbyHighlight();
     }
 
@@ -3137,25 +3518,40 @@ function updateRoomProps(room) {
 
   if (PLATFORM_ONLY_MODE || room.id === "platform") {
     const platformProps = [
-      { emoji: "🥣", x: "10%", y: "70%", size: "2.9rem", action: "feed", hint: "Food" },
-      { emoji: "🧼", x: "28%", y: "58%", size: "2.7rem", action: "clean", hint: "Shower" },
-      { emoji: "🎾", x: "72%", y: "64%", size: "2.8rem", action: "play", hint: "Toy" },
-      { emoji: "🛏️", x: "84%", y: "72%", size: "3rem", action: "sleep", hint: "Sleep" },
-      { emoji: "🥚", x: "46%", y: "60%", size: "2.8rem", action: "breed", hint: "Breed" },
-      { emoji: "🌿", x: "6%", y: "24%", size: "1.9rem" },
-      { emoji: "🌟", x: "90%", y: "20%", size: "1.7rem" },
-      { emoji: "☁️", x: "40%", y: "14%", size: "2rem" },
+      { emoji: "🥣", x: "14%", y: "74%", size: "2.9rem", action: "feed", hint: "Food Bowl", z: 5 },
+      { emoji: "🧃", x: "20%", y: "67%", size: "2.1rem", action: "feed", hint: "Snack", z: 4 },
+      { emoji: "🧼", x: "31%", y: "63%", size: "2.8rem", action: "clean", hint: "Shower", z: 5 },
+      { emoji: "🛁", x: "36%", y: "73%", size: "2.5rem", action: "clean", hint: "Bath", z: 4 },
+      { emoji: "🎾", x: "65%", y: "72%", size: "2.8rem", action: "play", hint: "Toy Ball", z: 5 },
+      { emoji: "🧸", x: "73%", y: "66%", size: "2.8rem", action: "play", hint: "Teddy", z: 4 },
+      { emoji: "🪀", x: "79%", y: "74%", size: "2.3rem", action: "play", hint: "Yo-Yo", z: 5 },
+      { emoji: "🛏️", x: "86%", y: "76%", size: "3rem", action: "sleep", hint: "Sleep", z: 5 },
+      { emoji: "🥚", x: "49%", y: "68%", size: "2.8rem", action: "breed", hint: "Breed", z: 5 },
+      { emoji: "🌴", x: "7%", y: "40%", size: "2.8rem", z: 3, motion: "palm" },
+      { emoji: "🌴", x: "89%", y: "44%", size: "2.3rem", z: 3, motion: "palm" },
+      { emoji: "🪨", x: "92%", y: "79%", size: "2.1rem", z: 3, motion: "ground" },
+      { emoji: "🐚", x: "58%", y: "83%", size: "1.8rem", z: 3, motion: "ground" },
+      { emoji: "☁️", x: "22%", y: "16%", size: "2rem", z: 2, motion: "cloud" },
+      { emoji: "☁️", x: "76%", y: "13%", size: "2.4rem", z: 2, motion: "cloud" },
+      { emoji: "✨", x: "48%", y: "20%", size: "1.5rem", z: 2, motion: "sparkle" },
     ];
 
     platformProps.forEach((p) => {
       const el = document.createElement("div");
-      el.className = "room-prop";
+      el.className = "room-prop platform-prop";
       el.textContent = p.emoji;
       el.style.left = p.x;
       el.style.top = p.y;
       el.style.fontSize = p.size;
+      el.style.setProperty("--float-delay", `${(Math.random() * 2.4).toFixed(2)}s`);
+      el.style.setProperty("--float-duration", `${(2.8 + Math.random() * 2.2).toFixed(2)}s`);
+      if (p.z) {
+        el.style.zIndex = String(p.z);
+      }
       if (p.action) {
-        el.classList.add("interactive");
+        el.classList.add("interactive", `platform-${p.action}`);
+        if (p.action === "play") el.classList.add("motion-toy");
+        else el.classList.add("motion-bob");
         el.dataset.action = p.action;
         el.dataset.emoji = p.emoji;
         const hint = document.createElement("span");
@@ -3170,9 +3566,13 @@ function updateRoomProps(room) {
           triggerActionByName(p.action, p.emoji);
         });
         platformInteractives.push({ el, action: p.action, emoji: p.emoji });
+      } else if (p.motion) {
+        el.classList.add(`motion-${p.motion}`);
       }
       propsContainer.appendChild(el);
     });
+
+    updatePlatformSceneMotion(0.016, false);
     return;
   }
 
@@ -3312,10 +3712,6 @@ function updateRoomProps(room) {
   });
 }
 
-function updateRoomActions(roomId) {
-  // No longer needed — actions are now interactive props
-}
-
 // ---------- 📊 NEEDS SYSTEM ----------
 let needDecayTimer = null;
 
@@ -3369,10 +3765,6 @@ function updateNeedsHUD() {
     else if (val <= NEED_WARN_THRESHOLD) el.classList.add("warning");
   }
 }
-
-// ---------- 🎾 PLAY ACTION ----------
-const btnPlay = $("btn-play");
-const btnBreed = $("btn-breed");
 
 // ---------- 🥚 BREEDING SYSTEM ----------
 let breedingMate = null; // The gallery creature chosen as mate
@@ -3766,8 +4158,9 @@ async function init() {
 
   // Migrate old localStorage gallery to IndexedDB (one-time)
   await PetDB.migrateFromLocalStorage();
+  await PetDB.migrateActiveGameFromLocalStorage(SAVE_KEY);
 
-  const hasSave = loadGame();
+  const hasSave = await loadGame();
 
   if (hasSave && gameState.createdAt) {
     // Restore the pet game screen
@@ -3787,12 +4180,7 @@ async function init() {
 
       // Process: bg removal if needed, then detect & slice into per-part sprites
       const processAndSlice = async (imgData) => {
-        const result = await detectAndSliceSprites(imgData);
-        if (result) {
-          spriteCache[gameState.level] = result.sprites;
-          setPetSprites(result.sprites);
-          applyPartStyles(result.centers, result.boxes);
-        }
+        await applyCreatureSprites(gameState.level, imgData);
       };
 
       if (gameState.bgCleaned && gameState.bgCleaned[gameState.level]) {
@@ -3857,17 +4245,31 @@ function showBreedNameModal(suggestedName) {
       overlay.classList.add("hidden");
       btn.removeEventListener("click", onConfirm);
       input.removeEventListener("keydown", onKey);
+      overlay.removeEventListener("click", onOverlayClick);
+      document.removeEventListener("keydown", onDocKey);
     }
     function onConfirm() {
       const name = sanitizeName(input.value.trim()) || suggestedName;
       finish();
       resolve(name);
     }
+    function onCancel() {
+      finish();
+      resolve(null);
+    }
     function onKey(e) {
       if (e.key === "Enter") onConfirm();
     }
+    function onDocKey(e) {
+      if (e.key === "Escape") onCancel();
+    }
+    function onOverlayClick(e) {
+      if (e.target === overlay) onCancel();
+    }
     btn.addEventListener("click", onConfirm);
     input.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onDocKey);
+    overlay.addEventListener("click", onOverlayClick);
   });
 }
 
