@@ -3357,7 +3357,7 @@ body {
 /* Engraved symbol centered on the door face */
 .door-symbol {
   position: absolute;
-  top: 38%;
+  top: 55%;
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: 2rem;
@@ -3365,6 +3365,28 @@ body {
   pointer-events: none;
   user-select: none;
   text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
+/* Engraved text label above the door symbol */
+.door-engraving {
+  position: absolute;
+  top: 26%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-body);
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  color: #5a2e08;
+  text-shadow:
+    1px 1px 0 rgba(0,0,0,0.45),
+    -1px -1px 0 rgba(255,180,80,0.15),
+    0 1px 3px rgba(0,0,0,0.5);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
   z-index: 1;
 }
 
