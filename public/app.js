@@ -3674,43 +3674,26 @@ function checkDoorProximity() {
   const size = getPetSize();
   const petCx = gameState.petX + size / 2;
   const worldW = Math.max(1, gameWorld.clientWidth);
+  let foundNear = null;
+  let nearestDist = Number.POSITIVE_INFINITY;
 
   platformDoors.forEach((door) => {
     const doorX = (door.xPercent / 100) * worldW;
     const dist = Math.abs(petCx - doorX);
     if (dist < 120) {
       door.el.classList.add("room-door--open");
-      foundNear = door;
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        foundNear = door;
+      }
     } else {
       door.el.classList.remove("room-door--open");
-    }
-    if (dist < 45 && door.el.classList.contains("room-door--open")) {
-      enteringRoom = true;
-      // Save return position when leaving the platform room
-      if (gameState.currentRoom === PLATFORM_ROOM_ID) {
-        platformCamera.platformReturnX = gameState.petX;
-      }
-      // Reset position to center (or return position) after transition
-      setTimeout(() => {
-        const targetRoom = door.roomId;
-        const newWorldW = gameWorld.clientWidth;
-        if (targetRoom === PLATFORM_ROOM_ID && platformCamera.platformReturnX != null) {
-          gameState.petX = platformCamera.platformReturnX;
-        } else {
-          gameState.petX = newWorldW / 2 - size / 2;
-        }
-        gameState.petY = getFloorY();
-        petParts.style.left = `${gameState.petX}px`;
-        petParts.style.top = `${gameState.petY}px`;
-        enteringRoom = false;
-      }, 250);
-      switchRoom(door.roomId);
     }
   });
 
   if (foundNear !== nearDoor) {
     nearDoor = foundNear;
-    hallDoors.forEach((door) => {
+    platformDoors.forEach((door) => {
       const hint = door.el.querySelector(".door-hint");
       if (hint) hint.style.opacity = door === nearDoor ? "1" : "0";
     });
@@ -3772,19 +3755,21 @@ function bindPlatformControls() {
       e.preventDefault();
       enteringRoom = true;
       const roomId = nearDoor.roomId;
-      if (gameState.currentRoom === "hall") {
-        platformCamera.hallReturnX = gameState.petX;
+      if (gameState.currentRoom === PLATFORM_ROOM_ID) {
+        platformCamera.platformReturnX = gameState.petX;
       }
       switchRoom(roomId);
       const sz = getPetSize();
       setTimeout(() => {
         const newWorldW = gameWorld.clientWidth;
-        if (roomId === "hall" && platformCamera.hallReturnX != null) {
-          gameState.petX = platformCamera.hallReturnX;
+        if (roomId === PLATFORM_ROOM_ID && platformCamera.platformReturnX != null) {
+          gameState.petX = platformCamera.platformReturnX;
         } else {
           gameState.petX = newWorldW / 2 - sz / 2;
         }
+        gameState.petY = getFloorY();
         petParts.style.left = `${gameState.petX}px`;
+        petParts.style.top = `${gameState.petY}px`;
         enteringRoom = false;
         nearDoor = null;
       }, 250);
@@ -3805,6 +3790,7 @@ function switchRoom(roomId, skipFade = false) {
   const targetId = normalizeRoomId(roomId || getDefaultRoomId());
   const doSwitch = () => {
     const room = ROOMS.find(r => r.id === targetId) || ROOMS[0];
+    nearDoor = null;
     gameState.currentRoom = room.id;
     roomBg.className = `room-bg room-${room.id}`;
     platformDoors.length = 0;
