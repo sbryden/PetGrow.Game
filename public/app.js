@@ -3657,10 +3657,17 @@ function updateRoomProps(room) {
       sym.textContent = symbol;
       door.appendChild(sym);
     }
-    const hint = document.createElement("span");
-    hint.className = "door-hint";
-    hint.textContent = "SPACE to enter";
-    door.appendChild(hint);
+    if (colorClass === "exit") {
+      const exitSign = document.createElement("div");
+      exitSign.className = "exit-sign";
+      exitSign.textContent = "EXIT";
+      door.appendChild(exitSign);
+    } else {
+      const hint = document.createElement("span");
+      hint.className = "door-hint";
+      hint.textContent = "SPACE to enter";
+      door.appendChild(hint);
+    }
     propsContainer.appendChild(door);
     // Register for proximity checks
     // worldX stored as percentage of gameWorld width, resolved later in checkDoorProximity
@@ -3893,7 +3900,7 @@ function updateRoomProps(room) {
     floor.className = "room-floor";
     propsContainer.appendChild(floor);
     // Exit door — use addDoor so sizing matches hall doors
-    addDoor(5, "hall", "exit", "🚪");
+    addDoor(5, "hall", "exit", null);
   }
 }
 
