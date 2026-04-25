@@ -31,6 +31,7 @@
   <div id="egg-lab" class="screen hidden">
     <div class="top-bar">
       <button id="btn-sound-lab" class="sound-toggle" title="Toggle sound">🔊</button>
+      <span id="backend-dot-lab" class="backend-dot" title="Backend: checking…"></span>
       <h1 class="game-title">🥚 PetGrow</h1>
     </div>
     <p class="subtitle">Mix ingredients into your egg and hatch a creature!</p>
@@ -219,6 +220,7 @@
   <div id="pet-game" class="screen hidden">
     <div class="top-bar">
       <button id="btn-sound-game" class="sound-toggle" title="Toggle sound">🔊</button>
+      <span id="backend-dot-game" class="backend-dot" title="Backend: checking…"></span>
       <h1 class="game-title-small">🥚 PetGrow</h1>
     </div>
 
@@ -244,7 +246,7 @@
 
     <!-- Creature Display -->
     <div class="creature-card" id="creature-card">
-      <div class="level-badge" id="level-badge">�� Baby</div>
+      <div class="room-indicator" id="room-indicator">🏠 The House</div>
       <div id="game-world" class="game-world">
         <div id="scene-root" class="scene-root">
           <div id="room-bg" class="room-bg"></div>
@@ -283,7 +285,10 @@
         <button id="btn-go-to-island" class="door-btn hidden" title="" style="display:none"></button>
       </div>
       <h2 id="creature-name" class="creature-name">My Pet</h2>
-      <span id="rarity-badge" class="rarity-badge"></span>
+      <div class="creature-badges">
+        <span id="rarity-badge" class="rarity-badge"></span>
+        <div class="level-badge" id="level-badge">🍼 Baby</div>
+      </div>
       <p id="creature-desc" class="creature-desc"></p>
     </div>
 
@@ -333,6 +338,7 @@
   <div id="pet-home" class="screen hidden">
     <div class="top-bar">
       <button id="btn-sound-home" class="sound-toggle" title="Toggle sound">🔊</button>
+      <span id="backend-dot-home" class="backend-dot" title="Backend: checking…"></span>
       <h1 class="game-title-small">🥚 PetGrow</h1>
     </div>
     <div class="home-body">

@@ -205,6 +205,7 @@ const creatureImage = petImgBase; // backward compat — points to base for any 
 const creatureName = $("creature-name");
 const creatureDesc = $("creature-desc");
 const levelBadge = $("level-badge");
+const roomIndicator = $("room-indicator");
 const clickCount = $("click-count");
 const levelText = $("level-text");
 const nextLevel = $("next-level");
@@ -2211,8 +2212,8 @@ function getDefaultRoomId() {
 function getFloorY() {
   if (!gameWorld) return 0;
   const size = getPetSize();
-  const maxY = Math.max(0, gameWorld.clientHeight - size);
-  return Math.max(0, maxY - PLATFORM_FLOOR_OFFSET);
+  // Align pet bottom to the door floor line (door.style.bottom = "22%")
+  return Math.max(0, gameWorld.clientHeight * 0.78 - size);
 }
 
 function positionPet() {
@@ -3795,6 +3796,7 @@ function switchRoom(roomId, skipFade = false) {
     roomBg.className = `room-bg room-${room.id}`;
     platformDoors.length = 0;
     updateRoomProps(room);
+    if (roomIndicator) roomIndicator.textContent = getRoomName(room.id);
     PetAudio.play("room");
   };
 
@@ -4683,6 +4685,33 @@ btnGoToIsland.addEventListener("click", () => {
     });
   }
 }
+
+// ---------- BACKEND STATUS INDICATOR ----------
+(function startBackendStatusPolling() {
+  const DOT_IDS = ["backend-dot-lab", "backend-dot-game", "backend-dot-home"];
+
+  function setStatus(online) {
+    for (const id of DOT_IDS) {
+      const dot = $(id);
+      if (!dot) continue;
+      dot.classList.toggle("online", online);
+      dot.classList.toggle("offline", !online);
+      dot.title = online ? "Backend: online" : "Backend: offline";
+    }
+  }
+
+  async function checkBackend() {
+    try {
+      await fetch(GEMINI_URL, { method: "HEAD" });
+      setStatus(true);
+    } catch {
+      setStatus(false);
+    }
+  }
+
+  checkBackend();
+  setInterval(checkBackend, 10_000);
+})();
 
 // ---------- GO! ----------
 init();
