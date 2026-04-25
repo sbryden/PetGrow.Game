@@ -3837,10 +3837,17 @@ function updateRoomProps(room) {
       sym.textContent = symbol;
       door.appendChild(sym);
     }
-    const hint = document.createElement("span");
-    hint.className = "door-hint";
-    hint.textContent = "SPACE to enter";
-    door.appendChild(hint);
+    if (colorClass === "exit") {
+      const exitSign = document.createElement("div");
+      exitSign.className = "exit-sign";
+      exitSign.textContent = "EXIT";
+      door.appendChild(exitSign);
+    } else {
+      const hint = document.createElement("span");
+      hint.className = "door-hint";
+      hint.textContent = "SPACE to enter";
+      door.appendChild(hint);
+    }
     propsContainer.appendChild(door);
     // Register for proximity checks
     // worldX stored as percentage of gameWorld width, resolved later in checkDoorProximity
@@ -4077,16 +4084,8 @@ function updateRoomProps(room) {
     const floor = document.createElement("div");
     floor.className = "room-floor";
     propsContainer.appendChild(floor);
-    // Exit door
-    const exitDoor = document.createElement("div");
-    exitDoor.className = "room-door room-door--exit";
-    exitDoor.style.left = "5%";
-    exitDoor.style.bottom = "22%";
-    const knob = document.createElement("div");
-    knob.className = "door-knob";
-    exitDoor.appendChild(knob);
-    propsContainer.appendChild(exitDoor);
-    platformDoors.push({ el: exitDoor, xPercent: 5, roomId: PLATFORM_ROOM_ID });
+    // Exit door — use addDoor so sizing, hint label, and registration all match
+    addDoor(5, PLATFORM_ROOM_ID, "exit", null);
   }
 }
 
