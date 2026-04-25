@@ -69,7 +69,7 @@ body {
   max-width: none;
   width: 100%;
   align-items: stretch;
-  gap: 10px;
+  gap: 6px;
 }
 
 #pet-game.screen.active {
@@ -78,7 +78,7 @@ body {
   z-index: 5;
   width: 100vw;
   height: 100dvh;
-  padding: 12px 14px 14px;
+  padding: 8px 10px 10px;
   background:
     radial-gradient(ellipse at 50% -30%, rgba(130, 190, 255, 0.2) 0%, rgba(130, 190, 255, 0) 70%),
     linear-gradient(180deg, #0f1420 0%, #121b2b 100%);
@@ -96,6 +96,10 @@ body {
 #pet-game .rarity-badge {
   position: relative;
   z-index: 2;
+}
+
+#pet-game .creature-desc {
+  display: none;
 }
 
 /* Lab atmosphere for egg lab screen */
@@ -1099,20 +1103,20 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: 6px;
 }
 
 .level-badge {
   font-family: var(--font-body);
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   display: inline-block;
-  padding: 6px 16px;
+  padding: 3px 12px;
   border-radius: 20px;
   background: rgba(255, 215, 0, 0.2);
   border: 2px solid var(--accent-yellow);
   color: var(--accent-yellow);
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .level-badge.teenager {
@@ -1144,9 +1148,12 @@ body {
   border: 2px solid var(--card-border);
   position: relative;
   box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.4);
+  perspective: 900px;
+  perspective-origin: 50% 38%;
   --cam-x: 0px;
   --cam-y: 0px;
   --cam-tilt: 0deg;
+  --cam-look: 0deg;
 }
 
 #pet-game .game-world {
@@ -1154,6 +1161,17 @@ body {
   min-height: 300px;
   height: auto;
   margin-bottom: 8px;
+}
+
+/* Scene root: applies combined 3D camera look + existing pan/tilt */
+.scene-root {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: 50% 50%;
+  transform: rotateY(var(--cam-look)) rotateZ(var(--cam-tilt)) translateX(var(--cam-x)) translateY(var(--cam-y));
+  transition: none;
+  will-change: transform;
 }
 
 .room-bg {
@@ -2184,7 +2202,7 @@ body {
   font-size: 0.85rem;
   color: var(--accent-cyan);
   text-shadow: 0 0 10px rgba(0, 210, 255, 0.4);
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
 
 .creature-desc {
@@ -2235,7 +2253,7 @@ body {
   background: var(--card-bg);
   border: 2px solid var(--card-border);
   border-radius: 12px;
-  padding: 12px 8px;
+  padding: 6px 8px;
 }
 
 .stat {
@@ -2246,7 +2264,7 @@ body {
 }
 
 .stat-label {
-  font-size: 0.8rem;
+  font-size: 0.7rem;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -2254,7 +2272,7 @@ body {
 
 .stat-value {
   font-weight: 700;
-  font-size: 1.2rem;
+  font-size: 1rem;
   color: var(--accent-yellow);
 }
 
@@ -2298,8 +2316,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 14px 8px;
+  gap: 3px;
+  padding: 8px 8px;
   border-radius: 12px;
   border: 2px solid var(--card-border);
   cursor: pointer;
@@ -2318,11 +2336,11 @@ body {
 }
 
 .btn-icon {
-  font-size: 1.8rem;
+  font-size: 1.4rem;
 }
 
 .btn-label {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   text-align: center;
 }
 
@@ -2455,16 +2473,16 @@ body {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
 }
 
 /* ===== DISCARD BUTTON ===== */
 .discard-btn {
   font-family: var(--font-body);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 700;
-  padding: 10px 24px;
+  padding: 7px 18px;
   border: 2px solid var(--accent-pink);
   border-radius: 10px;
   background: rgba(233, 69, 96, 0.15);
@@ -2482,9 +2500,9 @@ body {
 .gallery-nav-btn {
   display: inline-block;
   font-family: var(--font-body);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   font-weight: 700;
-  padding: 10px 24px;
+  padding: 7px 18px;
   border: 2px solid var(--accent-yellow);
   border-radius: 10px;
   background: rgba(255, 215, 0, 0.1);
@@ -2828,9 +2846,9 @@ body {
 .needs-hud {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 6px 8px;
   background: var(--card-bg);
   border: 2px solid var(--card-border);
   border-radius: 12px;
@@ -2845,12 +2863,12 @@ body {
 }
 
 .need-icon {
-  font-size: 1.2rem;
+  font-size: 1rem;
 }
 
 .need-track {
   width: 100%;
-  height: 8px;
+  height: 6px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   overflow: hidden;
@@ -2911,8 +2929,223 @@ body {
   transform: scale(1.08);
 }
 
-/* ===== PER-ROOM BACKGROUNDS ===== */
+/* ===== WOODEN HOUSE — HALL & ROOM BACKGROUNDS ===== */
+
+/* Hall back wall: horizontal wood planks */
+.room-bg.room-hall {
+  background:
+    /* Ceiling strip */
+    linear-gradient(180deg, #2a1608 0%, #2a1608 6%, transparent 6%),
+    /* Subtle warm light from sconces */
+    radial-gradient(ellipse 60% 40% at 12% 30%, rgba(255,190,70,0.12) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 40% at 30% 30%, rgba(255,190,70,0.10) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 40% at 50% 30%, rgba(255,190,70,0.12) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 40% at 70% 30%, rgba(255,190,70,0.10) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 40% at 88% 30%, rgba(255,190,70,0.12) 0%, transparent 100%),
+    /* Horizontal wood planks */
+    repeating-linear-gradient(
+      180deg,
+      #3b2210 0px,  #3b2210 28px,
+      #4a2c16 28px, #4a2c16 30px,
+      #3e2412 30px, #3e2412 58px,
+      #4d3018 58px, #4d3018 60px,
+      #3b2210 60px
+    );
+}
+
+/* Wooden floor that visually recedes into the scene */
+.room-floor {
+  position: absolute;
+  bottom: 0;
+  left: -20%;
+  width: 140%;
+  height: 48%;
+  transform-origin: bottom center;
+  transform: rotateX(56deg);
+  transform-style: preserve-3d;
+  background:
+    /* Floor edge shadow */
+    linear-gradient(180deg, rgba(0,0,0,0.55) 0%, transparent 18%),
+    /* Floor planks running left-right */
+    repeating-linear-gradient(
+      90deg,
+      #5c3410 0px,  #5c3410 118px,
+      #6a3e16 118px, #6a3e16 120px,
+      #5e3612 120px, #5e3612 238px,
+      #6c4018 238px, #6c4018 240px,
+      #5c3410 240px
+    );
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Wooden wall also applies to feeding room */
 .room-bg.room-feeding {
+  background:
+    linear-gradient(180deg, #2a1608 0%, #2a1608 6%, transparent 6%),
+    radial-gradient(ellipse 80% 50% at 50% 20%, rgba(255,160,40,0.10) 0%, transparent 100%),
+    repeating-linear-gradient(
+      180deg,
+      #2c1a0c 0px,  #2c1a0c 28px,
+      #3a220e 28px, #3a220e 30px,
+      #2e1c0e 30px, #2e1c0e 58px,
+      #3c2410 58px, #3c2410 60px,
+      #2c1a0c 60px
+    );
+}
+
+/* ===== WALL LIGHT SCONCES ===== */
+.wall-light {
+  position: absolute;
+  width: 28px;
+  height: 38px;
+  transform: translateZ(2px);
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* Sconce body */
+.wall-light::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 18px;
+  height: 24px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at 50% 40%, #ffe8a0 0%, #d4a030 55%, #8c5a10 100%);
+  border-radius: 4px 4px 2px 2px;
+  box-shadow:
+    0 0 18px 8px rgba(255, 210, 80, 0.6),
+    0 0 40px 18px rgba(255, 190, 50, 0.3);
+}
+
+/* Light cone cast on wall below */
+.wall-light::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  width: 60px;
+  height: 70px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse 50% 100% at 50% 0%, rgba(255, 210, 80, 0.28) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+/* ===== HALL RUG ===== */
+.hall-rug {
+  position: absolute;
+  width: 28%;
+  height: 10%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 50%, #8b2020 0%, #6a1818 45%, #4a1010 70%, rgba(74,16,16,0) 100%);
+  border: 3px solid #a03030;
+  z-index: 2;
+  pointer-events: none;
+  transform: translateZ(1px);
+}
+
+/* ===== 3D DOORS ===== */
+.room-door {
+  position: absolute;
+  width: 60px;
+  height: 100px;
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  transform: rotateY(0deg) translateZ(4px);
+  transition: transform 0.38s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 6;
+  cursor: pointer;
+}
+
+.room-door--open {
+  transform: rotateY(-78deg) translateZ(4px);
+}
+
+/* Door face: vertical wood planks */
+.room-door::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    /* Door frame / border */
+    linear-gradient(180deg, #2a1000 0px, #2a1000 4px, transparent 4px),
+    linear-gradient(180deg, transparent calc(100% - 4px), #2a1000 calc(100% - 4px)),
+    linear-gradient(90deg,  #2a1000 0px, #2a1000 4px, transparent 4px),
+    linear-gradient(90deg,  transparent calc(100% - 4px), #2a1000 calc(100% - 4px)),
+    /* Vertical wood planks */
+    repeating-linear-gradient(
+      90deg,
+      #8c4a14 0px, #8c4a14 18px,
+      #7a3e10 18px, #7a3e10 20px,
+      #8c4a14 20px
+    );
+  border-radius: 2px 2px 0 0;
+}
+
+/* Door panel inset (decorative) */
+.room-door::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 8px;
+  right: 8px;
+  height: 36px;
+  border: 2px solid rgba(0,0,0,0.4);
+  border-radius: 2px;
+  background: rgba(0,0,0,0.15);
+}
+
+/* Door colour tints */
+.room-door--orange::before  { filter: hue-rotate(10deg) saturate(1.5) brightness(1.1); }
+.room-door--exit::before    { filter: hue-rotate(0deg) saturate(0.9) brightness(0.85); }
+
+/* Door thickness (visible when open / rotateY) */
+.room-door .door-edge {
+  display: none; /* thickness handled by translateZ perspective alone */
+}
+
+/* Door knob */
+.door-knob {
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  transform: translateY(-50%) translateZ(1px);
+  background: radial-gradient(circle at 35% 35%, #ffe0a0, #c89030 60%, #7a5010 100%);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+
+/* Door frame arch on the wall (positioned behind the door) */
+.room-door-frame {
+  position: absolute;
+  width: 68px;
+  height: 110px;
+  background: transparent;
+  border: 5px solid #1e0e04;
+  border-radius: 4px 4px 0 0;
+  transform: translateZ(-1px);
+  pointer-events: none;
+}
+
+/* ===== ROOM FADE TRANSITION ===== */
+.room-fading {
+  animation: room-fade 0.22s ease-in-out;
+}
+
+@keyframes room-fade {
+  0%   { opacity: 1; }
+  45%  { opacity: 0; }
+  55%  { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* ===== PER-ROOM BACKGROUNDS ===== */
+.room-bg.room-feeding-OLD {
   background:
     radial-gradient(ellipse at 30% 85%, rgba(230, 126, 34, 0.15) 0%, transparent 50%),
     linear-gradient(180deg, #1a1a2e 0%, #2d1f1a 35%, #3d2b1f 65%, #4a3520 85%, #3a2a18 100%);
@@ -2983,6 +3216,112 @@ body {
   transform: translate3d(calc(var(--cam-x) * 0.62), calc(var(--cam-y) * 0.32), 0) rotate(calc(var(--cam-tilt) * 0.25));
 }
 
+/* ===== HOME ROOM BACKGROUND ===== */
+.room-bg.room-home {
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(200, 130, 50, 0.4) 0%, transparent 55%),
+    radial-gradient(ellipse at 20% 30%, rgba(255, 200, 100, 0.1) 0%, transparent 40%),
+    radial-gradient(ellipse at 80% 25%, rgba(255, 170, 80, 0.08) 0%, transparent 40%),
+    linear-gradient(180deg, #12080e 0%, #281810 30%, #3a2215 60%, #4a3020 80%, #3a2a1a 100%);
+}
+
+/* Wooden floor strip */
+.room-bg.room-home::before {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 26%;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 28px,
+      rgba(100, 60, 20, 0.18) 28px,
+      rgba(100, 60, 20, 0.18) 30px
+    ),
+    linear-gradient(180deg, rgba(150, 95, 45, 0.45) 0%, rgba(95, 60, 25, 0.65) 100%);
+  border-radius: 0 0 14px 14px;
+  pointer-events: none;
+}
+
+/* Warm window glow on wall */
+.room-bg.room-home::after {
+  content: "";
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28%;
+  height: 30%;
+  background: radial-gradient(ellipse at 50% 40%, rgba(255, 220, 120, 0.16) 0%, transparent 70%);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+/* ===== PET HOME SCREEN ===== */
+#pet-home {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 8px;
+  gap: 0;
+}
+
+.home-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#pet-home .creature-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+}
+
+#pet-home .game-world {
+  flex: 1;
+  min-height: 300px;
+  height: auto;
+  margin-bottom: 8px;
+}
+
+/* ===== DOOR BUTTON ===== */
+.door-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 20;
+  background: rgba(70, 42, 14, 0.88);
+  border: 2px solid rgba(190, 130, 55, 0.7);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1.7rem;
+  width: 56px;
+  height: 56px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 190, 80, 0.18);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+}
+
+.door-btn:hover {
+  background: rgba(110, 68, 20, 0.92);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.6), 0 0 14px rgba(190, 130, 55, 0.35);
+  transform: translateY(-2px);
+}
+
+.door-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
 /* ===== ROOM PROPS ===== */
 .room-props {
   position: absolute;
@@ -3032,11 +3371,11 @@ body {
 }
 
 #pet-game .stats-bar {
-  padding: 8px 8px;
+  padding: 4px 8px;
 }
 
 #pet-game .progress-bar-container {
-  height: 12px;
+  height: 8px;
 }
 
 #pet-game .action-buttons {
@@ -3112,6 +3451,7 @@ body {
 @keyframes platform-sparkle {
   0%, 100% { transform: scale(0.9) rotate(0deg); opacity: 0.4; }
   50% { transform: scale(1.22) rotate(18deg); opacity: 1; }
+}
 
 /* ===== PLAY BUTTON ===== */
 .play-btn {
@@ -3566,18 +3906,7 @@ body {
 
 /* ===== ROOM NAME DISPLAY ===== */
 .room-name-badge {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-family: var(--font-body);
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.5);
-  z-index: 3;
-  pointer-events: none;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-  white-space: nowrap;
+  display: none; /* Suppressed — navigation is world-driven */
 }
 
 /* ===== RESPONSIVE ===== */

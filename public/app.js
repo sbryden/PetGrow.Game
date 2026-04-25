@@ -54,14 +54,15 @@ const NO_JOB = {
 
 // ---------- 🏠 ROOMS ----------
 const ROOMS = [
-  { id: "feeding", name: "Feeding Room", emoji: "🍖", actions: ["feed"] },
-  { id: "bathroom", name: "Bathroom", emoji: "🧼", actions: ["clean"] },
-  { id: "playroom", name: "Playroom", emoji: "🎾", actions: ["play"] },
-  { id: "bedroom", name: "Bedroom", emoji: "🛏️", actions: ["sleep"] },
-  { id: "breeding", name: "Breeding Room", emoji: "🥚", actions: ["breed"] },
+  { id: "hall",     name: "The House",    emoji: "🏠", actions: [] },
+  { id: "feeding",  name: "Feeding Room",  emoji: "🍖", actions: ["feed"] },
+  { id: "bathroom", name: "Bathroom",      emoji: "🧼", actions: ["clean"] },
+  { id: "playroom", name: "Playroom",       emoji: "🎾", actions: ["play"] },
+  { id: "bedroom",  name: "Bedroom",        emoji: "🛏️", actions: ["sleep"] },
+  { id: "breeding", name: "Breeding Room",  emoji: "🥚", actions: ["breed"] },
 ];
 
-const PLATFORM_ONLY_MODE = true;
+const PLATFORM_ONLY_MODE = false;
 const PLATFORM_INTERACT_RADIUS = 110;
 
 // ---------- ⭐ RARITY ----------
@@ -153,6 +154,10 @@ const $ = (id) => document.getElementById(id);
 
 const eggLab = $("egg-lab");
 const petGame = $("pet-game");
+const petHome = $("pet-home");
+const homeBody = document.querySelector("#pet-home .home-body");
+const creatureCard = $("creature-card");
+const btnGoToIsland = $("btn-go-to-island");
 const egg = $("egg");
 const hatchBtn = $("hatch-btn");
 const hatchHint = $("hatch-hint");
@@ -162,6 +167,7 @@ const hatchingEgg = $("hatching-egg");
 const hatchingText = $("hatching-text");
 
 const gameWorld = $("game-world");
+const sceneRoot = $("scene-root");
 const roomBg = $("room-bg");
 const petParts = $("pet-parts");
 const petImgBase = $("pet-img-base");
@@ -544,7 +550,7 @@ hatchBtn.addEventListener("click", async () => {
   gameState.createdAt = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "platform";
+  gameState.currentRoom = "hall";
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = null;
@@ -594,15 +600,11 @@ hatchBtn.addEventListener("click", async () => {
 
   suppressSpinner = false;
 
-  // Switch screens
+  // Switch to home screen
   hatchingOverlay.style.display = "none";
   hatchingOverlay.classList.add("hidden");
   hatchingEgg.textContent = "🥚";
-  showScreen("pet-game");
-
-  // Position pet in viewport
-  positionPet();
-  switchRoom(gameState.currentRoom);
+  showHome();
 
   // Update all displays
   updateGameDisplay();
@@ -2188,7 +2190,38 @@ function showScreen(screenId) {
   screen.style.display = "flex";
 }
 
-// ---------- 📊 GAME DISPLAY ----------
+function showScreen(screenId) {
+  document.querySelectorAll(".screen").forEach((s) => {
+    s.classList.remove("active");
+    s.classList.add("hidden");
+    s.style.display = "none";
+  });
+
+  const screen = $(screenId);
+  screen.classList.add("active");
+  screen.classList.remove("hidden");
+  screen.style.display = "flex";
+}
+
+// ---------- 🏠 HOME / ISLAND TRANSITIONS ----------
+function showHome() {
+  // No UI intermediate screen — go straight to the game world (hall)
+  goToIsland();
+}
+
+function goToIsland() {
+  // Move creature card back into pet-game (before the stats-bar)
+  const statsBar = document.querySelector("#pet-game .stats-bar");
+  petGame.insertBefore(creatureCard, statsBar);
+  // Hide door button
+  btnGoToIsland.classList.add("hidden");
+  // Show island screen and restore room
+  showScreen("pet-game");
+  positionPet();
+  switchRoom(gameState.currentRoom || "hall");
+}
+
+
 function updateGameDisplay() {
   // Update name
   creatureName.textContent = gameState.petName;
@@ -3034,7 +3067,7 @@ async function equipPet(creature) {
   gameState.lastDecayTime = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "platform";
+  gameState.currentRoom = "hall";
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = creature.job || null;
@@ -3066,11 +3099,9 @@ async function equipPet(creature) {
 
   creatureDesc.textContent = buildDescription();
 
-  // Switch to pet game screen
+  // Switch to home screen after equipping from gallery
   closeGalleryDetail();
-  showScreen("pet-game");
-  positionPet();
-  switchRoom(gameState.currentRoom);
+  showHome();
   updateGameDisplay();
   saveGame();
   startDecayTimer();
@@ -3277,7 +3308,7 @@ async function loadGame() {
     gameState.createdAt = saved.createdAt || null;
     gameState.petX = saved.petX ?? null;
     gameState.petY = saved.petY ?? null;
-    gameState.currentRoom = saved.currentRoom || "platform";
+    gameState.currentRoom = saved.currentRoom || "hall";
     gameState.needs = saved.needs || { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
     gameState.lastNeedDecayTime = saved.lastNeedDecayTime || Date.now();
     gameState.job = saved.job || null;
@@ -3296,12 +3327,14 @@ async function loadGame() {
 let fidgetTimer = null;
 const FIDGET_CLASSES = ["fidget-look-left", "fidget-look-right", "fidget-ear-twitch", "fidget-scratch", "fidget-yawn", "fidget-tail-wag"];
 
-const platformKeys = { w: false, a: false, s: false, d: false };
+const platformKeys = { w: false, a: false, s: false, d: false, arrowLeft: false, arrowRight: false };
 let platformControlsBound = false;
 let platformLoopStarted = false;
 let lastPlatformTick = 0;
 const platformInteractives = [];
-const platformCamera = { x: 0, y: 0, tilt: 0, dirX: 0, dirY: 0 };
+const platformCamera = { x: 0, y: 0, tilt: 0, dirX: 0, dirY: 0, lookAngle: 0 };
+const hallDoors = [];
+let enteringRoom = false;
 
 function startIdleFidgets() {
   stopIdleFidgets();
@@ -3401,9 +3434,52 @@ function updatePlatformSceneMotion(dt, moving, vx = 0, vy = 0) {
   platformCamera.y += (targetY - platformCamera.y) * ease;
   platformCamera.tilt += (moveTilt - platformCamera.tilt) * Math.min(1, dt * 8);
 
+  // Arrow-key look: independent Y-axis rotation of the scene
+  const lookTarget = platformKeys.arrowLeft ? -22 : (platformKeys.arrowRight ? 22 : 0);
+  platformCamera.lookAngle += (lookTarget - platformCamera.lookAngle) * Math.min(1, dt * 5);
+
   gameWorld.style.setProperty("--cam-x", `${platformCamera.x.toFixed(2)}px`);
   gameWorld.style.setProperty("--cam-y", `${platformCamera.y.toFixed(2)}px`);
   gameWorld.style.setProperty("--cam-tilt", `${platformCamera.tilt.toFixed(2)}deg`);
+  gameWorld.style.setProperty("--cam-look", `${platformCamera.lookAngle.toFixed(2)}deg`);
+}
+
+// ---------- 🚪 DOOR PROXIMITY ----------
+function checkDoorProximity() {
+  if (enteringRoom || !hallDoors.length || gameState.petX === null) return;
+  const size = getPetSize();
+  const petCx = gameState.petX + size / 2;
+  const worldW = Math.max(1, gameWorld.clientWidth);
+
+  hallDoors.forEach((door) => {
+    const doorX = (door.xPercent / 100) * worldW;
+    const dist = Math.abs(petCx - doorX);
+    if (dist < 120) {
+      door.el.classList.add("room-door--open");
+    } else {
+      door.el.classList.remove("room-door--open");
+    }
+    if (dist < 45 && door.el.classList.contains("room-door--open")) {
+      enteringRoom = true;
+      // Save return position when leaving the hall
+      if (gameState.currentRoom === "hall") {
+        platformCamera.hallReturnX = gameState.petX;
+      }
+      // Reset position to center (or return position) after transition
+      setTimeout(() => {
+        const targetRoom = door.roomId;
+        const newWorldW = gameWorld.clientWidth;
+        if (targetRoom === "hall" && platformCamera.hallReturnX != null) {
+          gameState.petX = platformCamera.hallReturnX;
+        } else {
+          gameState.petX = newWorldW / 2 - size / 2;
+        }
+        petParts.style.left = `${gameState.petX}px`;
+        enteringRoom = false;
+      }, 250);
+      switchRoom(door.roomId);
+    }
+  });
 }
 
 function startPlatformLoop() {
@@ -3415,7 +3491,7 @@ function startPlatformLoop() {
     const dt = Math.min(0.05, (ts - lastPlatformTick) / 1000);
     lastPlatformTick = ts;
 
-    if (PLATFORM_ONLY_MODE && petGame.classList.contains("active") && gameState.createdAt) {
+    if (petGame.classList.contains("active") && gameState.createdAt) {
       const speed = 220;
       let vx = 0;
       let vy = 0;
@@ -3441,6 +3517,7 @@ function startPlatformLoop() {
 
       updatePlatformSceneMotion(dt, moving, vx, vy);
       updatePlatformNearbyHighlight();
+      checkDoorProximity();
     }
 
     requestAnimationFrame(step);
@@ -3454,20 +3531,14 @@ function bindPlatformControls() {
   platformControlsBound = true;
 
   document.addEventListener("keydown", (e) => {
-    if (!PLATFORM_ONLY_MODE || !petGame.classList.contains("active")) return;
+    if (!petGame.classList.contains("active")) return;
     const key = e.key.toLowerCase();
     if (key === "w") platformKeys.w = true;
     if (key === "a") platformKeys.a = true;
     if (key === "s") platformKeys.s = true;
     if (key === "d") platformKeys.d = true;
-    if (key === "e") {
-      const near = getNearestPlatformProp();
-      if (near && petParts.dataset.animating !== "true") {
-        near.el.classList.add("prop-used");
-        setTimeout(() => near.el.classList.remove("prop-used"), 400);
-        triggerActionByName(near.action, near.emoji);
-      }
-    }
+    if (e.key === "ArrowLeft")  { platformKeys.arrowLeft  = true; e.preventDefault(); }
+    if (e.key === "ArrowRight") { platformKeys.arrowRight = true; e.preventDefault(); }
   });
 
   document.addEventListener("keyup", (e) => {
@@ -3476,38 +3547,36 @@ function bindPlatformControls() {
     if (key === "a") platformKeys.a = false;
     if (key === "s") platformKeys.s = false;
     if (key === "d") platformKeys.d = false;
+    if (e.key === "ArrowLeft")  platformKeys.arrowLeft  = false;
+    if (e.key === "ArrowRight") platformKeys.arrowRight = false;
   });
 }
 
 // ---------- 🏠 ROOM SWITCHING ----------
-function switchRoom(roomId) {
-  if (PLATFORM_ONLY_MODE) {
-    const room = { id: "platform", name: "Pet Platform", emoji: "🧩" };
-    gameState.currentRoom = "platform";
-    roomBg.className = "room-bg room-platform";
+function switchRoom(roomId, skipFade = false) {
+  const targetId = roomId || "hall";
+  const doSwitch = () => {
+    const room = ROOMS.find(r => r.id === targetId) || ROOMS[0];
+    gameState.currentRoom = room.id;
+    roomBg.className = `room-bg room-${room.id}`;
+    hallDoors.length = 0;
     updateRoomProps(room);
-    updateRoomNameBadge(room);
-    return;
-  }
+    PetAudio.play("room");
+  };
 
-  const room = ROOMS.find(r => r.id === roomId);
-  if (!room) return;
-  gameState.currentRoom = roomId;
-  roomBg.className = `room-bg room-${roomId}`;
-  updateRoomProps(room);
-  updateRoomNameBadge(room);
-  PetAudio.play('room');
+  if (skipFade) {
+    doSwitch();
+  } else {
+    petGame.classList.add("room-fading");
+    setTimeout(() => {
+      doSwitch();
+      petGame.classList.remove("room-fading");
+    }, 220);
+  }
 }
 
-function updateRoomNameBadge(room) {
-  // Remove existing badge
-  const existing = gameWorld.querySelector(".room-name-badge");
-  if (existing) existing.remove();
-  // Add new badge
-  const badge = document.createElement("div");
-  badge.className = "room-name-badge";
-  badge.textContent = `${room.emoji} ${room.name}`;
-  gameWorld.appendChild(badge);
+function updateRoomNameBadge(_room) {
+  // Badges suppressed — navigation is world-driven, no UI overlays
 }
 
 function updateRoomProps(room) {
@@ -3516,7 +3585,49 @@ function updateRoomProps(room) {
   propsContainer.innerHTML = "";
   platformInteractives.length = 0;
 
-  if (PLATFORM_ONLY_MODE || room.id === "platform") {
+  // Helper: add a floor-level wooden door to the scene
+  function addDoor(xPercent, roomId, colorClass) {
+    const door = document.createElement("div");
+    door.className = `room-door room-door--${colorClass}`;
+    door.style.left = `${xPercent}%`;
+    door.style.bottom = "22%";
+    const knob = document.createElement("div");
+    knob.className = "door-knob";
+    door.appendChild(knob);
+    propsContainer.appendChild(door);
+    // Register for proximity checks
+    // worldX stored as percentage of gameWorld width, resolved later in checkDoorProximity
+    hallDoors.push({ el: door, xPercent, roomId });
+  }
+
+  // ── HALL ──────────────────────────────────────────────────────────────────
+  if (room.id === "hall") {
+    // Inject a 3D receding floor plane
+    const floor = document.createElement("div");
+    floor.className = "room-floor";
+    propsContainer.appendChild(floor);
+    // Wall lights placed every ~18% across the back wall
+    [12, 30, 50, 70, 88].forEach((xPct) => {
+      const sconce = document.createElement("div");
+      sconce.className = "wall-light";
+      sconce.style.left = `${xPct}%`;
+      sconce.style.top = "18%";
+      propsContainer.appendChild(sconce);
+    });
+    // Floor detail: small rug in the center
+    const rug = document.createElement("div");
+    rug.className = "hall-rug";
+    rug.style.left = "35%";
+    rug.style.bottom = "23%";
+    propsContainer.appendChild(rug);
+    // One door: Feeding Room (orange)
+    addDoor(60, "feeding", "orange");
+    updatePlatformSceneMotion(0.016, false);
+    return;
+  }
+
+  // ── PLATFORM (legacy fallback) ─────────────────────────────────────────────
+  if (room.id === "platform") {
     const platformProps = [
       { emoji: "🥣", x: "14%", y: "74%", size: "2.9rem", action: "feed", hint: "Food Bowl", z: 5 },
       { emoji: "🧃", x: "20%", y: "67%", size: "2.1rem", action: "feed", hint: "Snack", z: 4 },
@@ -3549,23 +3660,26 @@ function updateRoomProps(room) {
         el.style.zIndex = String(p.z);
       }
       if (p.action) {
-        el.classList.add("interactive", `platform-${p.action}`);
-        if (p.action === "play") el.classList.add("motion-toy");
-        else el.classList.add("motion-bob");
-        el.dataset.action = p.action;
-        el.dataset.emoji = p.emoji;
-        const hint = document.createElement("span");
-        hint.className = "prop-hint";
-        hint.textContent = `${p.hint || p.action} (E)`;
-        el.appendChild(hint);
-        el.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (petParts.dataset.animating === "true") return;
-          el.classList.add("prop-used");
-          setTimeout(() => el.classList.remove("prop-used"), 400);
-          triggerActionByName(p.action, p.emoji);
-        });
-        platformInteractives.push({ el, action: p.action, emoji: p.emoji });
+        // --- INTERACTIONS DISABLED (will re-enable later) ---
+        // el.classList.add("interactive", `platform-${p.action}`);
+        // if (p.action === "play") el.classList.add("motion-toy");
+        // else el.classList.add("motion-bob");
+        // el.dataset.action = p.action;
+        // el.dataset.emoji = p.emoji;
+        // const hint = document.createElement("span");
+        // hint.className = "prop-hint";
+        // hint.textContent = `${p.hint || p.action} (E)`;
+        // el.appendChild(hint);
+        // el.addEventListener("click", (e) => {
+        //   e.stopPropagation();
+        //   if (petParts.dataset.animating === "true") return;
+        //   el.classList.add("prop-used");
+        //   setTimeout(() => el.classList.remove("prop-used"), 400);
+        //   triggerActionByName(p.action, p.emoji);
+        // });
+        // platformInteractives.push({ el, action: p.action, emoji: p.emoji });
+        // Decorative only: keep a gentle float animation
+        el.classList.add("motion-bob");
       } else if (p.motion) {
         el.classList.add(`motion-${p.motion}`);
       }
@@ -3687,29 +3801,41 @@ function updateRoomProps(room) {
     el.style.left = p.x;
     el.style.top = p.y;
     el.style.fontSize = p.size;
-    // Make interactive if it has an action
+    el.style.filter = "drop-shadow(0px 8px 5px rgba(0,0,0,0.55))";
+    // Make interactive if it has an action — no label shown
     if (p.action) {
       el.classList.add("interactive");
-      // Add hint label
-      const hint = document.createElement("span");
-      hint.className = "prop-hint";
-      hint.textContent = p.hint || p.action;
-      el.appendChild(hint);
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         if (petParts.dataset.animating === "true") return;
-        // Visual feedback on prop
         el.classList.add("prop-used");
         setTimeout(() => el.classList.remove("prop-used"), 400);
-        // Trigger the action
-        if (p.action === "feed") doFeedAction(p.emoji);
+        if (p.action === "feed")   doFeedAction(p.emoji);
         else if (p.action === "clean") doCleanAction(p.emoji);
-        else if (p.action === "play") doPlayAction(p.emoji);
+        else if (p.action === "play")  doPlayAction(p.emoji);
         else if (p.action === "sleep") doSleepAction(p.emoji);
       });
     }
     propsContainer.appendChild(el);
   });
+
+  // Exit door (return to hall) on the left wall for all rooms
+  if (room.id !== "hall") {
+    // Inject 3D floor plane
+    const floor = document.createElement("div");
+    floor.className = "room-floor";
+    propsContainer.appendChild(floor);
+    // Exit door
+    const exitDoor = document.createElement("div");
+    exitDoor.className = "room-door room-door--exit";
+    exitDoor.style.left = "5%";
+    exitDoor.style.bottom = "22%";
+    const knob = document.createElement("div");
+    knob.className = "door-knob";
+    exitDoor.appendChild(knob);
+    propsContainer.appendChild(exitDoor);
+    hallDoors.push({ el: exitDoor, xPercent: 5, roomId: "hall" });
+  }
 }
 
 // ---------- 📊 NEEDS SYSTEM ----------
@@ -3975,7 +4101,7 @@ btnBreedGo.addEventListener("click", async () => {
   gameState.createdAt = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "platform";
+  gameState.currentRoom = "hall";
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = null;
@@ -4022,13 +4148,11 @@ btnBreedGo.addEventListener("click", async () => {
 
   suppressSpinner = false;
 
-  // Switch to pet game
+  // Switch to home screen after breeding hatch
   hatchingOverlay.style.display = "none";
   hatchingOverlay.classList.add("hidden");
   hatchingEgg.textContent = "🥚";
-  showScreen("pet-game");
-  positionPet();
-  switchRoom(gameState.currentRoom);
+  showHome();
   updateGameDisplay();
   saveGame();
   startDecayTimer();
@@ -4163,12 +4287,8 @@ async function init() {
   const hasSave = await loadGame();
 
   if (hasSave && gameState.createdAt) {
-    // Restore the pet game screen
-    showScreen("pet-game");
-
-    // Position pet in viewport
-    positionPet();
-    switchRoom(gameState.currentRoom || "platform");
+    // Restore to home screen
+    showHome();
 
     // Apply missed decay
     applyMissedDecay();
@@ -4274,15 +4394,15 @@ function showBreedNameModal(suggestedName) {
 }
 
 // ---------- SOUND TOGGLES ----------
-for (const id of ["btn-sound-lab", "btn-sound-game"]) {
+for (const id of ["btn-sound-lab", "btn-sound-game", "btn-sound-home"]) {
   const btn = $(id);
   if (btn) {
     // Set initial label
     btn.textContent = PetAudio.enabled ? "🔊" : "🔇";
     btn.addEventListener("click", () => {
       PetAudio.toggle();
-      // Sync both buttons
-      for (const bid of ["btn-sound-lab", "btn-sound-game"]) {
+      // Sync all sound buttons
+      for (const bid of ["btn-sound-lab", "btn-sound-game", "btn-sound-home"]) {
         const b = $(bid);
         if (b) b.textContent = PetAudio.enabled ? "🔊" : "🔇";
       }
@@ -4290,6 +4410,12 @@ for (const id of ["btn-sound-lab", "btn-sound-game"]) {
     });
   }
 }
+
+// ---------- DOOR BUTTON (home → island) ----------
+btnGoToIsland.addEventListener("click", () => {
+  PetAudio.play("click");
+  goToIsland();
+});
 
 
 

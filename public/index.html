@@ -208,7 +208,7 @@
     </div>
 
     <!-- Needs HUD -->
-    <div id="needs-hud" class="needs-hud">
+    <div id="needs-hud" class="needs-hud" style="display:none">
       <div class="need-bar">
         <span class="need-icon">🍖</span>
         <div class="need-track"><div class="need-fill" id="need-hunger"></div></div>
@@ -228,40 +228,44 @@
     </div>
 
     <!-- Creature Display -->
-    <div class="creature-card">
+    <div class="creature-card" id="creature-card">
       <div class="level-badge" id="level-badge">�� Baby</div>
       <div id="game-world" class="game-world">
-        <div id="room-bg" class="room-bg"></div>
-        <div id="room-props" class="room-props"></div>
-        <div id="pet-parts" class="pet-parts">
-          <img id="pet-img-base" class="pet-part-img pet-part-base" src="" alt="Your creature">
-          <!-- Back layers -->
-          <img id="pet-img-tail" class="pet-part-img pet-part-tail" src="" alt="">
-          <img id="pet-img-left-foot" class="pet-part-img pet-part-left-foot" src="" alt="">
-          <img id="pet-img-right-foot" class="pet-part-img pet-part-right-foot" src="" alt="">
-          <img id="pet-img-left-shin" class="pet-part-img pet-part-left-shin" src="" alt="">
-          <img id="pet-img-right-shin" class="pet-part-img pet-part-right-shin" src="" alt="">
-          <img id="pet-img-left-thigh" class="pet-part-img pet-part-left-thigh" src="" alt="">
-          <img id="pet-img-right-thigh" class="pet-part-img pet-part-right-thigh" src="" alt="">
-          <!-- Mid layers -->
-          <img id="pet-img-left-bicep" class="pet-part-img pet-part-left-bicep" src="" alt="">
-          <img id="pet-img-left-forearm" class="pet-part-img pet-part-left-forearm" src="" alt="">
-          <img id="pet-img-right-bicep" class="pet-part-img pet-part-right-bicep" src="" alt="">
-          <img id="pet-img-right-forearm" class="pet-part-img pet-part-right-forearm" src="" alt="">
-          <!-- Core layers -->
-          <img id="pet-img-belly" class="pet-part-img pet-part-belly" src="" alt="">
-          <img id="pet-img-chest" class="pet-part-img pet-part-chest" src="" alt="">
-          <img id="pet-img-neck" class="pet-part-img pet-part-neck" src="" alt="">
-          <!-- Front layers -->
-          <img id="pet-img-face" class="pet-part-img pet-part-face" src="" alt="">
-          <img id="pet-img-left-eye" class="pet-part-img pet-part-left-eye" src="" alt="">
-          <img id="pet-img-right-eye" class="pet-part-img pet-part-right-eye" src="" alt="">
-          <img id="pet-img-hat" class="pet-part-img pet-part-hat" src="" alt="">
-          <div id="pet-eyelid" class="pet-part-eyelid"></div>
+        <div id="scene-root" class="scene-root">
+          <div id="room-bg" class="room-bg"></div>
+          <div id="room-props" class="room-props"></div>
+          <div id="pet-parts" class="pet-parts">
+            <img id="pet-img-base" class="pet-part-img pet-part-base" src="" alt="Your creature">
+            <!-- Back layers -->
+            <img id="pet-img-tail" class="pet-part-img pet-part-tail" src="" alt="">
+            <img id="pet-img-left-foot" class="pet-part-img pet-part-left-foot" src="" alt="">
+            <img id="pet-img-right-foot" class="pet-part-img pet-part-right-foot" src="" alt="">
+            <img id="pet-img-left-shin" class="pet-part-img pet-part-left-shin" src="" alt="">
+            <img id="pet-img-right-shin" class="pet-part-img pet-part-right-shin" src="" alt="">
+            <img id="pet-img-left-thigh" class="pet-part-img pet-part-left-thigh" src="" alt="">
+            <img id="pet-img-right-thigh" class="pet-part-img pet-part-right-thigh" src="" alt="">
+            <!-- Mid layers -->
+            <img id="pet-img-left-bicep" class="pet-part-img pet-part-left-bicep" src="" alt="">
+            <img id="pet-img-left-forearm" class="pet-part-img pet-part-left-forearm" src="" alt="">
+            <img id="pet-img-right-bicep" class="pet-part-img pet-part-right-bicep" src="" alt="">
+            <img id="pet-img-right-forearm" class="pet-part-img pet-part-right-forearm" src="" alt="">
+            <!-- Core layers -->
+            <img id="pet-img-belly" class="pet-part-img pet-part-belly" src="" alt="">
+            <img id="pet-img-chest" class="pet-part-img pet-part-chest" src="" alt="">
+            <img id="pet-img-neck" class="pet-part-img pet-part-neck" src="" alt="">
+            <!-- Front layers -->
+            <img id="pet-img-face" class="pet-part-img pet-part-face" src="" alt="">
+            <img id="pet-img-left-eye" class="pet-part-img pet-part-left-eye" src="" alt="">
+            <img id="pet-img-right-eye" class="pet-part-img pet-part-right-eye" src="" alt="">
+            <img id="pet-img-hat" class="pet-part-img pet-part-hat" src="" alt="">
+            <div id="pet-eyelid" class="pet-part-eyelid"></div>
+          </div>
         </div>
         <div id="loading-spinner" class="loading-spinner hidden">
           <div class="spinner"></div>
         </div>
+        <!-- btn-go-to-island kept as inert anchor for legacy JS refs -->
+        <button id="btn-go-to-island" class="door-btn hidden" title="" style="display:none"></button>
       </div>
       <h2 id="creature-name" class="creature-name">My Pet</h2>
       <span id="rarity-badge" class="rarity-badge"></span>
@@ -269,7 +273,7 @@
     </div>
 
     <!-- Click Counter -->
-    <div class="stats-bar">
+    <div class="stats-bar" style="display:none">
       <div class="stat">
         <span class="stat-label">Clicks</span>
         <span class="stat-value" id="click-count">0</span>
@@ -285,12 +289,12 @@
     </div>
 
     <!-- Progress Bar -->
-    <div class="progress-bar-container">
+    <div class="progress-bar-container" style="display:none">
       <div class="progress-bar" id="progress-bar"></div>
     </div>
 
     <!-- Action Buttons -->
-    <div class="action-buttons">
+    <div class="action-buttons" style="display:none">
       <button id="btn-status" class="action-btn status-btn">
         <span class="btn-icon">📊</span>
         <span class="btn-label">Status</span>
@@ -302,11 +306,22 @@
     </div>
 
     <!-- Bottom Buttons -->
-    <div class="bottom-buttons">
+    <div class="bottom-buttons" style="display:none">
       <button id="btn-new-creature" class="new-creature-btn">🥚 New Creature</button>
       <button id="btn-discard" class="discard-btn">🗑️ Discard</button>
       <button id="btn-gallery-game" class="gallery-nav-btn">🏆 My Creatures</button>
       <a class="gallery-nav-btn" href="rigging-tool/index.html">🧩 Rigging Studio</a>
+    </div>
+  </div>
+
+  <!-- ========== SCREEN: PET HOME ========== -->
+  <div id="pet-home" class="screen hidden">
+    <div class="top-bar">
+      <button id="btn-sound-home" class="sound-toggle" title="Toggle sound">🔊</button>
+      <h1 class="game-title-small">🥚 PetGrow</h1>
+    </div>
+    <div class="home-body">
+      <!-- creature-card is moved here dynamically when on the home screen -->
     </div>
   </div>
 
