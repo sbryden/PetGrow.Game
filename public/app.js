@@ -614,7 +614,49 @@ hatchBtn.addEventListener("click", async () => {
   startNeedDecayTimer();
 });
 
-// ---------- 🎨 PROMPT BUILDER ----------
+// ---------- � RANDOM NAME ----------
+const CREATURE_NAMES = [
+  "Blobkin","Fizzwick","Snortleby","Glimmer","Wobblefang","Puffnoodle","Zazzle","Sprocket",
+  "Noodle","Chompy","Thistlewig","Grumblix","Snugglepaws","Brindle","Mochi","Cinder",
+  "Dazzle","Puddles","Sparky","Fizzbeak","Twixle","Snappy","Gloopster","Rumblefuzz",
+  "Pebbletoe","Whumper","Zigzag","Tangle","Clonk","Breezy","Frizzle","Jelly",
+  "Blorp","Squish","Doodle","Pipsqueak","Fudge","Bonkers","Quirk","Zippy",
+  "Swifty","Crunch","Nuzzle","Tater","Wriggle","Lumpy","Skitter","Bamble",
+  "Flicker","Cobble","Murkle","Sprout","Fern","Gust","Ember","Frost",
+  "Pebble","Marble","Slate","Flint","Coral","Mossy","Ripple","Glint",
+  "Thorn","Wisp","Shadow","Nimbus","Dewdrop","Smolder","Echo","Zephyr",
+  "Ruckus","Giggles","Mischief","Chaos","Bandit","Rascal","Pickle","Biscuit",
+  "Pretzel","Nacho","Muffin","Donut","Waffles","Churro","Taco","Boba",
+  "Suki","Nori","Miso","Tofu","Wasabi","Kiwi","Mango","Papaya",
+  "Orbit","Comet","Nova","Quasar","Pulsar","Nebula","Cosmo","Lyra",
+  "Pixel","Byte","Glitch","Vector","Matrix","Codec","Neon","Arcade",
+  "Pounce","Tumble","Lurch","Galumph","Shamble","Scuttle","Waddly","Prowler"
+];
+
+async function pickRandomCreatureName() {
+  let usedNames = new Set();
+  try {
+    const all = await PetDB.loadAll();
+    all.forEach(c => { if (c.petName) usedNames.add(c.petName.toLowerCase()); });
+  } catch (_) {}
+  // Also avoid the current active pet's name if loaded
+  if (gameState.petName) usedNames.add(gameState.petName.toLowerCase());
+
+  const available = CREATURE_NAMES.filter(n => !usedNames.has(n.toLowerCase()));
+  const pool = available.length > 0 ? available : CREATURE_NAMES;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// Dice button
+document.getElementById("btn-random-name").addEventListener("click", async () => {
+  const name = await pickRandomCreatureName();
+  petNameInput.value = name;
+  gameState.petName = name;
+  updateHatchButton();
+  petNameInput.focus();
+});
+
+// ---------- �🎨 PROMPT BUILDER ----------
 /** Strip characters that could confuse the AI prompt */
 function sanitizeName(name) {
   return name.replace(/[^a-zA-Z0-9 \-_'.!]/g, '').slice(0, 30);
@@ -654,7 +696,7 @@ function buildPrompt(level, refinementNotes = "") {
   if (wildcard) desc += `, featuring a ${wildcard} as part of its body or as an accessory`;
   if (element) desc += `, with a ${element} texture`;
 
-  let prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Draw the creature LARGE so it fills at least 80% of the image — do not leave large empty margins. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered, facing the viewer, standing upright in a symmetrical A-pose with arms, fins, or limbs slightly spread away from the body. The head should be clearly distinct from the torso with a visible neck or narrowing between them. All limbs and appendages should have clear separation from the torso — no limbs pressed flat against the body. Full body visible including all limbs, fins, tentacles, or appendages. No text in the image.`;
+  let prompt = `Draw a single cute Tamagotchi-style virtual pet creature. The creature is: ${desc}. Style: ${vibe}. The art style should be colorful digital illustration, like a modern Tamagotchi or virtual pet game sprite. Draw the creature LARGE so it fills at least 80% of the image — do not leave large empty margins. Place the creature on a plain solid bright magenta (#FF00FF) background with absolutely no gradients, patterns, or scenery — just a flat uniform magenta fill behind the sprite. The creature should be centered, facing right (the creature's face and body should point toward the right side of the image), standing upright in an A-pose with arms, fins, or limbs slightly spread away from the body. The head should be clearly distinct from the torso with a visible neck or narrowing between them. All limbs and appendages should have clear separation from the torso — no limbs pressed flat against the body. Full body visible including all limbs, fins, tentacles, or appendages. No text in the image.`;
 
   if (refinementNotes) {
     prompt += ` ${refinementNotes}`;
@@ -3511,6 +3553,8 @@ function startPlatformLoop() {
         gameState.petY = Math.max(0, Math.min(maxY, gameState.petY + vy * speed * dt));
         petParts.style.left = `${gameState.petX}px`;
         petParts.style.top = `${gameState.petY}px`;
+        if (vx < 0) petParts.style.transform = "scaleX(-1)";
+        else if (vx > 0) petParts.style.transform = "scaleX(1)";
       }
 
       updatePlatformSceneMotion(dt, moving, vx, vy);
