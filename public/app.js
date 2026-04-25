@@ -3822,7 +3822,7 @@ function updateRoomProps(room) {
   platformInteractives.length = 0;
 
   // Helper: add a floor-level wooden door to the scene
-  function addDoor(xPercent, roomId, colorClass, symbol) {
+  function addDoor(xPercent, roomId, colorClass, symbol, label) {
     const door = document.createElement("div");
     door.className = `room-door room-door--${colorClass}`;
     door.style.left = `${xPercent}%`;
@@ -3838,6 +3838,12 @@ function updateRoomProps(room) {
       sym.className = "door-symbol";
       sym.textContent = symbol;
       door.appendChild(sym);
+    }
+    if (label) {
+      const lbl = document.createElement("span");
+      lbl.className = "door-engraving";
+      lbl.textContent = label;
+      door.appendChild(lbl);
     }
     if (colorClass === "exit") {
       const exitSign = document.createElement("div");
@@ -3876,8 +3882,8 @@ function updateRoomProps(room) {
     rug.style.left = "35%";
     rug.style.bottom = "23%";
     propsContainer.appendChild(rug);
-    addDoor(PLATFORM_DOOR_SLOTS[0], "lab", "teal");
-    addDoor(PLATFORM_DOOR_SLOTS[1], "feeding", "orange");
+    addDoor(PLATFORM_DOOR_SLOTS[0], "lab", "teal", "🧪", "LAB");
+    addDoor(PLATFORM_DOOR_SLOTS[1], "feeding", "orange", "🍎", "FOOD");
     updatePlatformSceneMotion(0.016, false);
     return;
   }
