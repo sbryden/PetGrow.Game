@@ -3398,6 +3398,18 @@ body {
   z-index: 1;
 }
 
+/* Per-door tint: orange wood → warm dark brown */
+.room-door--orange .door-symbol {
+  filter: sepia(1) saturate(2.2) brightness(0.48) hue-rotate(8deg);
+  text-shadow: 0 2px 5px rgba(60, 20, 0, 0.6);
+}
+
+/* Per-door tint: teal wood → dark teal-green */
+.room-door--teal .door-symbol {
+  filter: sepia(1) saturate(2.0) brightness(0.46) hue-rotate(148deg);
+  text-shadow: 0 2px 5px rgba(0, 40, 30, 0.6);
+}
+
 /* Engraved text label above the door symbol */
 .door-engraving {
   position: absolute;
@@ -3405,7 +3417,7 @@ body {
   left: 50%;
   transform: translate(-50%, -50%);
   font-family: var(--font-body);
-  font-size: 0.55rem;
+  font-size: 0.75rem;
   font-weight: 900;
   letter-spacing: 0.18em;
   color: #5a2e08;
@@ -3418,6 +3430,23 @@ body {
   user-select: none;
   white-space: nowrap;
   z-index: 1;
+}
+
+/* Per-door engraving text colour */
+.room-door--orange .door-engraving {
+  color: #5a2600;
+  text-shadow:
+    1px 1px 0 rgba(0,0,0,0.45),
+    -1px -1px 0 rgba(255,160,60,0.18),
+    0 1px 3px rgba(0,0,0,0.5);
+}
+
+.room-door--teal .door-engraving {
+  color: #0a3c30;
+  text-shadow:
+    1px 1px 0 rgba(0,0,0,0.45),
+    -1px -1px 0 rgba(60,200,160,0.18),
+    0 1px 3px rgba(0,0,0,0.5);
 }
 
 /* ===== ROOM FADE TRANSITION ===== */
