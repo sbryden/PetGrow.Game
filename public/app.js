@@ -3562,6 +3562,7 @@ const platformInteractives = [];
 const platformCamera = { x: 0, y: 0, dirX: 0, dirY: 0, lookAngle: 0 };
 const platformDoors = [];
 let enteringRoom = false;
+let nearDoor = null;
 
 function startIdleFidgets() {
   stopIdleFidgets();
@@ -3679,6 +3680,7 @@ function checkDoorProximity() {
     const dist = Math.abs(petCx - doorX);
     if (dist < 120) {
       door.el.classList.add("room-door--open");
+      foundNear = door;
     } else {
       door.el.classList.remove("room-door--open");
     }
@@ -3705,6 +3707,14 @@ function checkDoorProximity() {
       switchRoom(door.roomId);
     }
   });
+
+  if (foundNear !== nearDoor) {
+    nearDoor = foundNear;
+    hallDoors.forEach((door) => {
+      const hint = door.el.querySelector(".door-hint");
+      if (hint) hint.style.opacity = door === nearDoor ? "1" : "0";
+    });
+  }
 }
 
 function startPlatformLoop() {
@@ -3758,6 +3768,27 @@ function bindPlatformControls() {
     if (key === "d") platformKeys.d = true;
     if (e.key === "ArrowLeft")  { platformKeys.arrowLeft  = true; e.preventDefault(); }
     if (e.key === "ArrowRight") { platformKeys.arrowRight = true; e.preventDefault(); }
+    if (e.code === "Space" && nearDoor && !enteringRoom) {
+      e.preventDefault();
+      enteringRoom = true;
+      const roomId = nearDoor.roomId;
+      if (gameState.currentRoom === "hall") {
+        platformCamera.hallReturnX = gameState.petX;
+      }
+      switchRoom(roomId);
+      const sz = getPetSize();
+      setTimeout(() => {
+        const newWorldW = gameWorld.clientWidth;
+        if (roomId === "hall" && platformCamera.hallReturnX != null) {
+          gameState.petX = platformCamera.hallReturnX;
+        } else {
+          gameState.petX = newWorldW / 2 - sz / 2;
+        }
+        petParts.style.left = `${gameState.petX}px`;
+        enteringRoom = false;
+        nearDoor = null;
+      }, 250);
+    }
   });
 
   document.addEventListener("keyup", (e) => {
@@ -3803,14 +3834,27 @@ function updateRoomProps(room) {
   platformInteractives.length = 0;
 
   // Helper: add a floor-level wooden door to the scene
-  function addDoor(xPercent, roomId, colorClass) {
+  function addDoor(xPercent, roomId, colorClass, symbol) {
     const door = document.createElement("div");
     door.className = `room-door room-door--${colorClass}`;
     door.style.left = `${xPercent}%`;
     door.style.bottom = "22%";
+    const petSz = getPetSize();
+    door.style.width = `${Math.round(petSz * 0.6)}px`;
+    door.style.height = `${petSz}px`;
     const knob = document.createElement("div");
     knob.className = "door-knob";
     door.appendChild(knob);
+    if (symbol) {
+      const sym = document.createElement("span");
+      sym.className = "door-symbol";
+      sym.textContent = symbol;
+      door.appendChild(sym);
+    }
+    const hint = document.createElement("span");
+    hint.className = "door-hint";
+    hint.textContent = "SPACE to enter";
+    door.appendChild(hint);
     propsContainer.appendChild(door);
     // Register for proximity checks
     // worldX stored as percentage of gameWorld width, resolved later in checkDoorProximity

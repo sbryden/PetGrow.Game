@@ -3308,6 +3308,38 @@ body {
   pointer-events: none;
 }
 
+/* "SPACE to enter" hint label shown above the door when in range */
+.door-hint {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-yellow);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Engraved symbol centered on the door face */
+.door-symbol {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  filter: sepia(1) saturate(0.4) brightness(0.55);
+  pointer-events: none;
+  user-select: none;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+
 /* ===== ROOM FADE TRANSITION ===== */
 .room-fading {
   animation: room-fade 0.22s ease-in-out;
