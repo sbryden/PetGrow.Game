@@ -973,13 +973,21 @@ body {
   color: var(--accent-yellow);
 }
 
+.name-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 80%;
+  max-width: 340px;
+}
+
 #pet-name-input {
   font-family: var(--font-body);
   font-size: 1.2rem;
   font-weight: 700;
   padding: 12px 16px;
-  width: 80%;
-  max-width: 300px;
+  flex: 1;
+  min-width: 0;
   border: 2px solid var(--card-border);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.08);
@@ -987,6 +995,29 @@ body {
   text-align: center;
   outline: none;
   transition: border-color 0.3s;
+}
+
+.btn-dice {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 10px 12px;
+  border: 2px solid var(--card-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s, background 0.2s;
+  user-select: none;
+}
+
+.btn-dice:hover {
+  border-color: var(--accent-cyan);
+  background: rgba(0, 210, 255, 0.15);
+  transform: rotate(20deg) scale(1.1);
+}
+
+.btn-dice:active {
+  transform: rotate(180deg) scale(0.95);
 }
 
 #pet-name-input:focus {
