@@ -936,9 +936,7 @@ async function generateCreatureImage(level) {
 
   } catch (err) {
     console.error("Gemini API error:", err);
-    // Show a fallback emoji display
-    setPetImageSrc("");
-    creatureDesc.textContent = buildDescription() + " (Image couldn't load — check your API key!)";
+    throw err;
   } finally {
     if (!suppressSpinner) {
       loadingSpinner.classList.add("hidden");
@@ -3542,7 +3540,7 @@ function bindPlatformControls() {
   });
 
   document.addEventListener("keyup", (e) => {
-    const key = e.key.toLowerCase();
+    const key = (e.key || "").toLowerCase();
     if (key === "w") platformKeys.w = false;
     if (key === "a") platformKeys.a = false;
     if (key === "s") platformKeys.s = false;
