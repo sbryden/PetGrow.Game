@@ -15,8 +15,20 @@
 </head>
 <body>
 
+  <div id="boot-loading" class="screen active boot-loading-screen" aria-live="polite">
+    <div class="boot-loading-card">
+      <div class="boot-loading-animation" aria-hidden="true">
+        <span class="boot-loading-ring"></span>
+        <span class="boot-loading-ring boot-loading-ring-delay"></span>
+        <span class="boot-loading-core">🥚</span>
+      </div>
+      <h1 class="game-title">PetGrow</h1>
+      <p class="boot-loading-text">Loading your creatures...</p>
+    </div>
+  </div>
+
   <!-- ========== SCREEN 1: EGG LAB ========== -->
-  <div id="egg-lab" class="screen active">
+  <div id="egg-lab" class="screen hidden">
     <div class="top-bar">
       <button id="btn-sound-lab" class="sound-toggle" title="Toggle sound">🔊</button>
       <h1 class="game-title">🥚 PetGrow</h1>
@@ -333,6 +345,12 @@
     <h1 class="game-title-small">🏆 My Creatures</h1>
     <p class="gallery-subtitle">Your collection of hatched creatures</p>
 
+    <div id="gallery-active-save" class="gallery-active-save hidden">
+      <p class="gallery-section-label">Current Creature</p>
+      <div id="gallery-active-card" class="gallery-active-card"></div>
+      <button id="btn-gallery-continue" class="gallery-nav-btn">▶ Continue Current Creature</button>
+    </div>
+
     <div class="gallery-controls">
       <label for="gallery-sort">Sort by:</label>
       <select id="gallery-sort" class="gallery-sort-select">
@@ -345,9 +363,12 @@
 
     <div id="gallery-grid" class="gallery-grid"></div>
 
-    <p id="gallery-empty" class="gallery-empty hidden">No creatures yet! Hatch some eggs and discard them to see them here. 🥚</p>
+    <p id="gallery-empty" class="gallery-empty hidden">No creatures in storage yet. Create one or archive a current creature to see it here. 🥚</p>
 
-    <button id="btn-gallery-back" class="new-creature-btn">⬅️ Back</button>
+    <div class="gallery-screen-actions">
+      <button id="btn-gallery-new" class="new-creature-btn">🥚 Create New Creature</button>
+      <button id="btn-gallery-back" class="new-creature-btn hidden">⬅️ Back</button>
+    </div>
   </div>
 
   <!-- ========== GALLERY DETAIL OVERLAY ========== -->

@@ -52,9 +52,14 @@ const NO_JOB = {
   promptMod: "looking lazy and slobby, messy unkempt fur/skin, crumbs and stains, slouching posture, bags under eyes, wearing a stained oversized t-shirt, couch potato energy, crusty and disheveled"
 };
 
+const PLATFORM_ROOM_ID = "platform";
+const PLATFORM_FLOOR_OFFSET = 14;
+const PLATFORM_DOOR_SLOTS = [32, 68];
+
 // ---------- 🏠 ROOMS ----------
 const ROOMS = [
-  { id: "hall",     name: "The House",    emoji: "🏠", actions: [] },
+  { id: PLATFORM_ROOM_ID, name: "The House", emoji: "🏠", actions: [] },
+  { id: "lab",      name: "Lab",          emoji: "🧪", actions: [] },
   { id: "feeding",  name: "Feeding Room",  emoji: "🍖", actions: ["feed"] },
   { id: "bathroom", name: "Bathroom",      emoji: "🧼", actions: ["clean"] },
   { id: "playroom", name: "Playroom",       emoji: "🎾", actions: ["play"] },
@@ -117,34 +122,38 @@ const spriteCache = {};
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 // ---------- 🗂️ GAME STATE ----------
-let gameState = {
-  ingredients: {
-    animal: null,
-    color: null,
-    wildcard: null,
-    element: null,
-  },
-  petName: "",
-  clicks: 0,
-  level: LEVEL_BABY,
-  cachedImages: {},
-  lastDecayTime: Date.now(),
-  createdAt: null,
-  petX: null,
-  petY: null,
-  currentRoom: "platform",
-  needs: {
-    hunger: NEED_MAX,
-    cleanliness: NEED_MAX,
-    fun: NEED_MAX,
-    energy: NEED_MAX,
-  },
-  lastNeedDecayTime: Date.now(),
-  job: null,              // chosen job id (string) or null
-  parentJobs: [],         // job ids from parents (excluded from selection for bred pets)
-  bgCleaned: {},          // tracks which cached images already had bg removed
-  renderModes: {},        // per-level render mode: sliced or full
-};
+function createInitialGameState() {
+  return {
+    ingredients: {
+      animal: null,
+      color: null,
+      wildcard: null,
+      element: null,
+    },
+    petName: "",
+    clicks: 0,
+    level: LEVEL_BABY,
+    cachedImages: {},
+    lastDecayTime: Date.now(),
+    createdAt: null,
+    petX: null,
+    petY: null,
+    currentRoom: PLATFORM_ROOM_ID,
+    needs: {
+      hunger: NEED_MAX,
+      cleanliness: NEED_MAX,
+      fun: NEED_MAX,
+      energy: NEED_MAX,
+    },
+    lastNeedDecayTime: Date.now(),
+    job: null,
+    parentJobs: [],
+    bgCleaned: {},
+    renderModes: {},
+  };
+}
+
+let gameState = createInitialGameState();
 
 let saveGameTimer = null;
 let pendingSavePromise = Promise.resolve();
@@ -208,9 +217,13 @@ const btnDiscard = $("btn-discard");
 const btnGalleryLab = $("btn-gallery-lab");
 const btnGalleryGame = $("btn-gallery-game");
 const btnGalleryBack = $("btn-gallery-back");
+const btnGalleryNew = $("btn-gallery-new");
+const btnGalleryContinue = $("btn-gallery-continue");
 const galleryScreen = $("gallery");
 const galleryGrid = $("gallery-grid");
 const galleryEmpty = $("gallery-empty");
+const galleryActiveSaveSection = $("gallery-active-save");
+const galleryActiveCard = $("gallery-active-card");
 
 const statusPopup = $("status-popup");
 const popupClose = $("popup-close");
@@ -550,7 +563,7 @@ hatchBtn.addEventListener("click", async () => {
   gameState.createdAt = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "hall";
+  gameState.currentRoom = getDefaultRoomId();
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = null;
@@ -2187,22 +2200,37 @@ function getPetSize() {
   return window.innerWidth <= 480 ? PET_SIZE_SMALL : PET_SIZE;
 }
 
+function normalizeRoomId(roomId) {
+  return roomId === "hall" || roomId === "platform" ? PLATFORM_ROOM_ID : roomId;
+}
+
+function getDefaultRoomId() {
+  return PLATFORM_ROOM_ID;
+}
+
+function getFloorY() {
+  if (!gameWorld) return 0;
+  const size = getPetSize();
+  const maxY = Math.max(0, gameWorld.clientHeight - size);
+  return Math.max(0, maxY - PLATFORM_FLOOR_OFFSET);
+}
+
 function positionPet() {
   if (!gameWorld) return;
 
   const size = getPetSize();
   const maxX = Math.max(0, gameWorld.clientWidth - size);
-  const maxY = Math.max(0, gameWorld.clientHeight - size);
   const centeredY = (gameWorld.clientHeight - size) / 2;
   const isLegacyCenteredY = gameState.petY !== null && Math.abs(gameState.petY - centeredY) < 2;
+  const floorY = getFloorY();
 
   // Spawn on the platform floor and migrate old centered saves.
   if (gameState.petX === null || gameState.petY === null || isLegacyCenteredY) {
     gameState.petX = maxX / 2;
-    gameState.petY = Math.max(0, maxY - 14);
+    gameState.petY = floorY;
   } else {
     gameState.petX = Math.max(0, Math.min(maxX, gameState.petX));
-    gameState.petY = Math.max(0, Math.min(maxY, gameState.petY));
+    gameState.petY = floorY;
   }
 
   petParts.style.left = `${gameState.petX}px`;
@@ -2245,7 +2273,7 @@ function showScreen(screenId) {
 
 // ---------- 🏠 HOME / ISLAND TRANSITIONS ----------
 function showHome() {
-  // No UI intermediate screen — go straight to the game world (hall)
+  // No UI intermediate screen — go straight to the game world (platform room)
   goToIsland();
 }
 
@@ -2258,7 +2286,7 @@ function goToIsland() {
   // Show island screen and restore room
   showScreen("pet-game");
   positionPet();
-  switchRoom(gameState.currentRoom || "hall");
+  switchRoom(gameState.currentRoom || getDefaultRoomId());
 }
 
 
@@ -2857,12 +2885,12 @@ statusPopup.addEventListener("click", (e) => {
 });
 
 // ---------- 🥚 NEW CREATURE ----------
-btnNewCreature.addEventListener("click", async () => {
-  if (confirm("Start over with a new creature? Your current pet will be saved to the gallery!")) {
-    await saveToGallery();
-    await PetDB.clearActiveGame();
-    location.reload();
-  }
+btnNewCreature.addEventListener("click", () => {
+  void beginNewCreatureFlow();
+});
+
+btnGalleryNew.addEventListener("click", () => {
+  void beginNewCreatureFlow();
 });
 
 // ---------- 🗑️ DISCARD CREATURE ----------
@@ -2889,22 +2917,95 @@ discardNo.addEventListener("click", () => {
 let galleryReturnScreen = "egg-lab";
 
 btnGalleryLab.addEventListener("click", () => {
-  galleryReturnScreen = "egg-lab";
-  showGallery();
+  void showGallery("egg-lab");
 });
 
 btnGalleryGame.addEventListener("click", () => {
-  galleryReturnScreen = "pet-game";
-  showGallery();
+  void showGallery("pet-game");
 });
 
 btnGalleryBack.addEventListener("click", () => {
+  if (!galleryReturnScreen) return;
   showScreen(galleryReturnScreen);
 });
 
-async function showGallery() {
+btnGalleryContinue.addEventListener("click", () => {
+  if (!gameState.createdAt) return;
+  closeGalleryDetail();
+  showHome();
+});
+
+async function showGallery(returnScreen = null) {
+  galleryReturnScreen = returnScreen;
+  btnGalleryBack.classList.toggle("hidden", !returnScreen);
   await renderGallery();
   showScreen("gallery");
+}
+
+function getCurrentCreatureSnapshot() {
+  if (!gameState.createdAt || !gameState.petName) return null;
+  return buildSaveSnapshot();
+}
+
+function getRoomName(roomId) {
+  const room = ROOMS.find((entry) => entry.id === normalizeRoomId(roomId));
+  return room ? `${room.emoji} ${room.name}` : "🏠 The House";
+}
+
+function renderActiveCreatureCard() {
+  const activeCreature = getCurrentCreatureSnapshot();
+  galleryActiveCard.replaceChildren();
+
+  if (!activeCreature) {
+    galleryActiveSaveSection.classList.add("hidden");
+    return;
+  }
+
+  const summary = document.createElement("div");
+  summary.className = "gallery-active-summary";
+
+  const preview = document.createElement("img");
+  preview.className = "gallery-active-preview";
+  preview.alt = `${activeCreature.petName} preview`;
+  preview.src = activeCreature.cachedImages?.[activeCreature.level] || TRANSPARENT_PIXEL;
+  summary.appendChild(preview);
+
+  const info = document.createElement("div");
+  info.className = "gallery-active-info";
+
+  const name = document.createElement("div");
+  name.className = "gallery-active-name";
+  name.textContent = activeCreature.petName;
+  info.appendChild(name);
+
+  const level = document.createElement("div");
+  level.className = "gallery-active-meta";
+  level.textContent = `Level: ${activeCreature.level}`;
+  info.appendChild(level);
+
+  const room = document.createElement("div");
+  room.className = "gallery-active-meta";
+  room.textContent = `Last location: ${getRoomName(activeCreature.currentRoom)}`;
+  info.appendChild(room);
+
+  summary.appendChild(info);
+  galleryActiveCard.appendChild(summary);
+
+  if (activeCreature.ingredients) {
+    const tags = document.createElement("div");
+    tags.className = "gallery-tags";
+    const labels = { animal: "🐾", color: "🎨", wildcard: "🃏", element: "✨" };
+    for (const [key, emoji] of Object.entries(labels)) {
+      if (!activeCreature.ingredients[key]) continue;
+      const tag = document.createElement("span");
+      tag.className = "gallery-tag";
+      tag.textContent = `${emoji} ${activeCreature.ingredients[key]}`;
+      tags.appendChild(tag);
+    }
+    galleryActiveCard.appendChild(tags);
+  }
+
+  galleryActiveSaveSection.classList.remove("hidden");
 }
 
 async function saveToGallery() {
@@ -2957,6 +3058,8 @@ if (gallerySortSelect) {
 }
 
 async function renderGallery() {
+  renderActiveCreatureCard();
+
   const gallery = await PetDB.loadAll();
   const sortBy = gallerySortSelect ? gallerySortSelect.value : 'newest';
   sortGallery(gallery, sortBy);
@@ -3107,7 +3210,7 @@ async function equipPet(creature) {
   gameState.lastDecayTime = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "hall";
+  gameState.currentRoom = getDefaultRoomId();
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = creature.job || null;
@@ -3149,6 +3252,57 @@ async function equipPet(creature) {
   startNeedDecayTimer();
 
   console.log("🐾 Equipped pet from gallery:", gameState.petName);
+}
+
+function clearActiveGameTimers() {
+  if (decayTimer) {
+    clearInterval(decayTimer);
+    decayTimer = null;
+  }
+  if (needDecayTimer) {
+    clearInterval(needDecayTimer);
+    needDecayTimer = null;
+  }
+  stopIdleFidgets();
+}
+
+function resetEggLabForm() {
+  document.querySelectorAll(".ingredient-select").forEach((sel) => {
+    sel.value = "";
+    sel.classList.remove("has-value");
+  });
+  petNameInput.value = "";
+  hatchBtn.disabled = true;
+  updateEggState();
+  updateHatchButton();
+}
+
+function resetForNewCreature() {
+  clearActiveGameTimers();
+  if (saveGameTimer) {
+    clearTimeout(saveGameTimer);
+    saveGameTimer = null;
+  }
+
+  gameState = createInitialGameState();
+  Object.keys(spriteCache).forEach((key) => delete spriteCache[key]);
+  creatureDesc.textContent = "";
+  closeGalleryDetail();
+  resetEggLabForm();
+  updateGameDisplay();
+}
+
+async function beginNewCreatureFlow() {
+  if (gameState.createdAt && gameState.petName) {
+    const confirmed = confirm("Start over with a new creature? Your current pet will be saved to My Creatures.");
+    if (!confirmed) return;
+    await saveToGallery();
+  }
+
+  await PetDB.clearActiveGame();
+  resetForNewCreature();
+  await renderGallery();
+  showScreen("egg-lab");
 }
 
 // ---------- 🔍 GALLERY DETAIL OVERLAY ----------
@@ -3304,6 +3458,25 @@ function buildSaveSnapshot() {
   };
 }
 
+function restoreGameState(saved) {
+  gameState.ingredients = saved.ingredients || gameState.ingredients;
+  gameState.petName = saved.petName || "";
+  gameState.clicks = saved.clicks || 0;
+  gameState.level = saved.level || LEVEL_BABY;
+  gameState.cachedImages = saved.cachedImages || {};
+  gameState.lastDecayTime = saved.lastDecayTime || Date.now();
+  gameState.createdAt = saved.createdAt || null;
+  gameState.petX = saved.petX ?? null;
+  gameState.petY = saved.petY ?? null;
+  gameState.currentRoom = normalizeRoomId(saved.currentRoom || getDefaultRoomId());
+  gameState.needs = saved.needs || { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
+  gameState.lastNeedDecayTime = saved.lastNeedDecayTime || Date.now();
+  gameState.job = saved.job || null;
+  gameState.parentJobs = saved.parentJobs || [];
+  gameState.bgCleaned = saved.bgCleaned || {};
+  gameState.renderModes = saved.renderModes || {};
+}
+
 function persistGameNow() {
   pendingSavePromise = pendingSavePromise
     .catch(() => {})
@@ -3336,31 +3509,45 @@ function saveGame(immediate = false) {
 async function loadGame() {
   try {
     const saved = await PetDB.loadActiveGame();
-    if (!saved) return false;
+    if (!saved) return null;
 
-    // Restore state
-    gameState.ingredients = saved.ingredients || gameState.ingredients;
-    gameState.petName = saved.petName || "";
-    gameState.clicks = saved.clicks || 0;
-    gameState.level = saved.level || LEVEL_BABY;
-    gameState.cachedImages = saved.cachedImages || {};
-    gameState.lastDecayTime = saved.lastDecayTime || Date.now();
-    gameState.createdAt = saved.createdAt || null;
-    gameState.petX = saved.petX ?? null;
-    gameState.petY = saved.petY ?? null;
-    gameState.currentRoom = saved.currentRoom || "hall";
-    gameState.needs = saved.needs || { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
-    gameState.lastNeedDecayTime = saved.lastNeedDecayTime || Date.now();
-    gameState.job = saved.job || null;
-    gameState.parentJobs = saved.parentJobs || [];
-    gameState.bgCleaned = saved.bgCleaned || {};
-    gameState.renderModes = saved.renderModes || {};
-
-    return true;
+    restoreGameState(saved);
+    return saved;
   } catch (err) {
     console.warn("Failed to load save:", err);
-    return false;
+    return null;
   }
+}
+
+function prepareActiveCreatureSession() {
+  applyMissedDecay();
+
+  if (gameState.cachedImages[gameState.level]) {
+    const raw = gameState.cachedImages[gameState.level];
+    setPetImageSrc(raw);
+
+    const processAndSlice = async (imgData) => {
+      await applyCreatureSprites(gameState.level, imgData);
+    };
+
+    if (gameState.bgCleaned && gameState.bgCleaned[gameState.level]) {
+      void processAndSlice(raw);
+    } else {
+      removeImageBackground(raw).then(async (clean) => {
+        gameState.cachedImages[gameState.level] = clean;
+        if (!gameState.bgCleaned) gameState.bgCleaned = {};
+        gameState.bgCleaned[gameState.level] = true;
+        saveGame();
+        await processAndSlice(clean);
+      });
+    }
+  }
+
+  creatureDesc.textContent = buildDescription();
+  updateGameDisplay();
+  startDecayTimer();
+  startIdleFidgets();
+  startNeedDecayTimer();
 }
 
 // ---------- 🎭 IDLE FIDGETS ----------
@@ -3372,8 +3559,8 @@ let platformControlsBound = false;
 let platformLoopStarted = false;
 let lastPlatformTick = 0;
 const platformInteractives = [];
-const platformCamera = { x: 0, y: 0, tilt: 0, dirX: 0, dirY: 0, lookAngle: 0 };
-const hallDoors = [];
+const platformCamera = { x: 0, y: 0, dirX: 0, dirY: 0, lookAngle: 0 };
+const platformDoors = [];
 let enteringRoom = false;
 
 function startIdleFidgets() {
@@ -3455,24 +3642,21 @@ function updatePlatformSceneMotion(dt, moving, vx = 0, vy = 0) {
   const worldH = Math.max(1, gameWorld.clientHeight);
   const followEase = Math.min(1, dt * (moving ? 10 : 4));
   const targetDirX = moving ? vx : 0;
-  const targetDirY = moving ? vy : 0;
   platformCamera.dirX += (targetDirX - platformCamera.dirX) * followEase;
-  platformCamera.dirY += (targetDirY - platformCamera.dirY) * followEase;
+  platformCamera.dirY += (0 - platformCamera.dirY) * followEase;
 
   const trailingDistance = Math.min(72, worldW * 0.1);
   const elevatedLook = Math.min(60, worldH * 0.14);
   const focusX = petCx - platformCamera.dirX * trailingDistance;
-  const focusY = petCy - elevatedLook - platformCamera.dirY * (trailingDistance * 0.35);
+  const focusY = petCy - elevatedLook;
   const nx = focusX / worldW - 0.5;
   const ny = focusY / worldH - 0.5;
   const targetX = -nx * 96;
   const targetY = -ny * 68;
-  const moveTilt = moving ? vx * 3.2 : 0;
   const ease = Math.min(1, dt * 6.5);
 
   platformCamera.x += (targetX - platformCamera.x) * ease;
   platformCamera.y += (targetY - platformCamera.y) * ease;
-  platformCamera.tilt += (moveTilt - platformCamera.tilt) * Math.min(1, dt * 8);
 
   // Arrow-key look: independent Y-axis rotation of the scene
   const lookTarget = platformKeys.arrowLeft ? -22 : (platformKeys.arrowRight ? 22 : 0);
@@ -3480,18 +3664,17 @@ function updatePlatformSceneMotion(dt, moving, vx = 0, vy = 0) {
 
   gameWorld.style.setProperty("--cam-x", `${platformCamera.x.toFixed(2)}px`);
   gameWorld.style.setProperty("--cam-y", `${platformCamera.y.toFixed(2)}px`);
-  gameWorld.style.setProperty("--cam-tilt", `${platformCamera.tilt.toFixed(2)}deg`);
   gameWorld.style.setProperty("--cam-look", `${platformCamera.lookAngle.toFixed(2)}deg`);
 }
 
 // ---------- 🚪 DOOR PROXIMITY ----------
 function checkDoorProximity() {
-  if (enteringRoom || !hallDoors.length || gameState.petX === null) return;
+  if (enteringRoom || !platformDoors.length || gameState.petX === null) return;
   const size = getPetSize();
   const petCx = gameState.petX + size / 2;
   const worldW = Math.max(1, gameWorld.clientWidth);
 
-  hallDoors.forEach((door) => {
+  platformDoors.forEach((door) => {
     const doorX = (door.xPercent / 100) * worldW;
     const dist = Math.abs(petCx - doorX);
     if (dist < 120) {
@@ -3501,20 +3684,22 @@ function checkDoorProximity() {
     }
     if (dist < 45 && door.el.classList.contains("room-door--open")) {
       enteringRoom = true;
-      // Save return position when leaving the hall
-      if (gameState.currentRoom === "hall") {
-        platformCamera.hallReturnX = gameState.petX;
+      // Save return position when leaving the platform room
+      if (gameState.currentRoom === PLATFORM_ROOM_ID) {
+        platformCamera.platformReturnX = gameState.petX;
       }
       // Reset position to center (or return position) after transition
       setTimeout(() => {
         const targetRoom = door.roomId;
         const newWorldW = gameWorld.clientWidth;
-        if (targetRoom === "hall" && platformCamera.hallReturnX != null) {
-          gameState.petX = platformCamera.hallReturnX;
+        if (targetRoom === PLATFORM_ROOM_ID && platformCamera.platformReturnX != null) {
+          gameState.petX = platformCamera.platformReturnX;
         } else {
           gameState.petX = newWorldW / 2 - size / 2;
         }
+        gameState.petY = getFloorY();
         petParts.style.left = `${gameState.petX}px`;
+        petParts.style.top = `${gameState.petY}px`;
         enteringRoom = false;
       }, 250);
       switchRoom(door.roomId);
@@ -3534,30 +3719,24 @@ function startPlatformLoop() {
     if (petGame.classList.contains("active") && gameState.createdAt) {
       const speed = 220;
       let vx = 0;
-      let vy = 0;
       if (platformKeys.a) vx -= 1;
       if (platformKeys.d) vx += 1;
-      if (platformKeys.w) vy -= 1;
-      if (platformKeys.s) vy += 1;
 
-      const moving = vx !== 0 || vy !== 0;
+      const moving = vx !== 0;
 
       if (moving) {
-        const mag = Math.sqrt(vx * vx + vy * vy) || 1;
-        vx /= mag;
-        vy /= mag;
         const size = getPetSize();
         const maxX = Math.max(0, gameWorld.clientWidth - size);
-        const maxY = Math.max(0, gameWorld.clientHeight - size);
         gameState.petX = Math.max(0, Math.min(maxX, gameState.petX + vx * speed * dt));
-        gameState.petY = Math.max(0, Math.min(maxY, gameState.petY + vy * speed * dt));
-        petParts.style.left = `${gameState.petX}px`;
-        petParts.style.top = `${gameState.petY}px`;
         if (vx < 0) petParts.style.transform = "scaleX(-1)";
         else if (vx > 0) petParts.style.transform = "scaleX(1)";
       }
 
-      updatePlatformSceneMotion(dt, moving, vx, vy);
+      gameState.petY = getFloorY();
+      petParts.style.left = `${gameState.petX}px`;
+      petParts.style.top = `${gameState.petY}px`;
+
+      updatePlatformSceneMotion(dt, moving, vx, 0);
       updatePlatformNearbyHighlight();
       checkDoorProximity();
     }
@@ -3574,10 +3753,8 @@ function bindPlatformControls() {
 
   document.addEventListener("keydown", (e) => {
     if (!petGame.classList.contains("active")) return;
-    const key = e.key.toLowerCase();
-    if (key === "w") platformKeys.w = true;
+    const key = (e.key || "").toLowerCase();
     if (key === "a") platformKeys.a = true;
-    if (key === "s") platformKeys.s = true;
     if (key === "d") platformKeys.d = true;
     if (e.key === "ArrowLeft")  { platformKeys.arrowLeft  = true; e.preventDefault(); }
     if (e.key === "ArrowRight") { platformKeys.arrowRight = true; e.preventDefault(); }
@@ -3585,9 +3762,7 @@ function bindPlatformControls() {
 
   document.addEventListener("keyup", (e) => {
     const key = (e.key || "").toLowerCase();
-    if (key === "w") platformKeys.w = false;
     if (key === "a") platformKeys.a = false;
-    if (key === "s") platformKeys.s = false;
     if (key === "d") platformKeys.d = false;
     if (e.key === "ArrowLeft")  platformKeys.arrowLeft  = false;
     if (e.key === "ArrowRight") platformKeys.arrowRight = false;
@@ -3596,12 +3771,12 @@ function bindPlatformControls() {
 
 // ---------- 🏠 ROOM SWITCHING ----------
 function switchRoom(roomId, skipFade = false) {
-  const targetId = roomId || "hall";
+  const targetId = normalizeRoomId(roomId || getDefaultRoomId());
   const doSwitch = () => {
     const room = ROOMS.find(r => r.id === targetId) || ROOMS[0];
     gameState.currentRoom = room.id;
     roomBg.className = `room-bg room-${room.id}`;
-    hallDoors.length = 0;
+    platformDoors.length = 0;
     updateRoomProps(room);
     PetAudio.play("room");
   };
@@ -3639,11 +3814,11 @@ function updateRoomProps(room) {
     propsContainer.appendChild(door);
     // Register for proximity checks
     // worldX stored as percentage of gameWorld width, resolved later in checkDoorProximity
-    hallDoors.push({ el: door, xPercent, roomId });
+    platformDoors.push({ el: door, xPercent, roomId });
   }
 
-  // ── HALL ──────────────────────────────────────────────────────────────────
-  if (room.id === "hall") {
+  // ── PLATFORM ROOM ─────────────────────────────────────────────────────────
+  if (room.id === PLATFORM_ROOM_ID) {
     // Inject a 3D receding floor plane
     const floor = document.createElement("div");
     floor.className = "room-floor";
@@ -3658,14 +3833,18 @@ function updateRoomProps(room) {
     });
     // Floor detail: small rug in the center
     const rug = document.createElement("div");
-    rug.className = "hall-rug";
+    rug.className = "platform-rug";
     rug.style.left = "35%";
     rug.style.bottom = "23%";
     propsContainer.appendChild(rug);
-    // One door: Feeding Room (orange)
-    addDoor(60, "feeding", "orange");
+    addDoor(PLATFORM_DOOR_SLOTS[0], "lab", "teal");
+    addDoor(PLATFORM_DOOR_SLOTS[1], "feeding", "orange");
     updatePlatformSceneMotion(0.016, false);
     return;
+  }
+
+  if (room.id === "lab") {
+    updatePlatformSceneMotion(0.016, false);
   }
 
   // ── PLATFORM (legacy fallback) ─────────────────────────────────────────────
@@ -3833,6 +4012,7 @@ function updateRoomProps(room) {
     bathroom: bathroomProps[level] || bathroomProps[LEVEL_BABY],
     playroom: playroomProps[level] || playroomProps[LEVEL_BABY],
     bedroom: bedroomProps[level] || bedroomProps[LEVEL_BABY],
+    lab: [],
     breeding: [],
   };
   const props = propSets[room.id] || [];
@@ -3861,8 +4041,8 @@ function updateRoomProps(room) {
     propsContainer.appendChild(el);
   });
 
-  // Exit door (return to hall) on the left wall for all rooms
-  if (room.id !== "hall") {
+  // Exit door back to the platform room on the left wall for all rooms
+  if (room.id !== PLATFORM_ROOM_ID) {
     // Inject 3D floor plane
     const floor = document.createElement("div");
     floor.className = "room-floor";
@@ -3876,7 +4056,7 @@ function updateRoomProps(room) {
     knob.className = "door-knob";
     exitDoor.appendChild(knob);
     propsContainer.appendChild(exitDoor);
-    hallDoors.push({ el: exitDoor, xPercent: 5, roomId: "hall" });
+    platformDoors.push({ el: exitDoor, xPercent: 5, roomId: PLATFORM_ROOM_ID });
   }
 }
 
@@ -4143,7 +4323,7 @@ btnBreedGo.addEventListener("click", async () => {
   gameState.createdAt = Date.now();
   gameState.petX = null;
   gameState.petY = null;
-  gameState.currentRoom = "hall";
+  gameState.currentRoom = getDefaultRoomId();
   gameState.needs = { hunger: NEED_MAX, cleanliness: NEED_MAX, fun: NEED_MAX, energy: NEED_MAX };
   gameState.lastNeedDecayTime = Date.now();
   gameState.job = null;
@@ -4326,50 +4506,14 @@ async function init() {
   await PetDB.migrateFromLocalStorage();
   await PetDB.migrateActiveGameFromLocalStorage(SAVE_KEY);
 
-  const hasSave = await loadGame();
+  const savedGame = await loadGame();
 
-  if (hasSave && gameState.createdAt) {
-    // Restore to home screen
-    showHome();
-
-    // Apply missed decay
-    applyMissedDecay();
-
-    // Load cached image for current level, stripping any leftover background
-    if (gameState.cachedImages[gameState.level]) {
-      const raw = gameState.cachedImages[gameState.level];
-      setPetImageSrc(raw); // show immediately with full image
-
-      // Process: bg removal if needed, then detect & slice into per-part sprites
-      const processAndSlice = async (imgData) => {
-        await applyCreatureSprites(gameState.level, imgData);
-      };
-
-      if (gameState.bgCleaned && gameState.bgCleaned[gameState.level]) {
-        // Already cleaned — just slice into sprites
-        processAndSlice(raw);
-      } else {
-        removeImageBackground(raw).then(async (clean) => {
-          gameState.cachedImages[gameState.level] = clean;
-          if (!gameState.bgCleaned) gameState.bgCleaned = {};
-          gameState.bgCleaned[gameState.level] = true;
-          saveGame();
-          await processAndSlice(clean);
-        });
-      }
-    }
-    creatureDesc.textContent = buildDescription();
-
-    updateGameDisplay();
-    startDecayTimer();
-    startIdleFidgets();
-    startNeedDecayTimer();
-
+  if (savedGame && gameState.createdAt) {
+    prepareActiveCreatureSession();
     console.log("🔄 Loaded saved game!", gameState);
-  } else {
-    // Fresh start — show egg lab
-    showScreen("egg-lab");
   }
+
+  await showGallery();
 
   // Register Service Worker for offline / PWA
   if ("serviceWorker" in navigator) {
