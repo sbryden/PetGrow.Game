@@ -4617,7 +4617,7 @@ function showBreedNameModal(suggestedName) {
 }
 
 // ---------- SOUND TOGGLES ----------
-for (const id of ["btn-sound-lab", "btn-sound-game", "btn-sound-home"]) {
+for (const id of ["btn-sound-lab", "btn-sound-game", "btn-sound-home", "btn-sound-gallery"]) {
   const btn = $(id);
   if (btn) {
     // Set initial label
@@ -4625,7 +4625,7 @@ for (const id of ["btn-sound-lab", "btn-sound-game", "btn-sound-home"]) {
     btn.addEventListener("click", () => {
       PetAudio.toggle();
       // Sync all sound buttons
-      for (const bid of ["btn-sound-lab", "btn-sound-game", "btn-sound-home"]) {
+      for (const bid of ["btn-sound-lab", "btn-sound-game", "btn-sound-home", "btn-sound-gallery"]) {
         const b = $(bid);
         if (b) b.textContent = PetAudio.enabled ? "🔊" : "🔇";
       }
@@ -4694,7 +4694,7 @@ btnGoToIsland.addEventListener("click", () => {
 
 // ---------- BACKEND STATUS INDICATOR ----------
 (function startBackendStatusPolling() {
-  const DOT_IDS = ["backend-dot-lab", "backend-dot-game", "backend-dot-home"];
+  const DOT_IDS = ["backend-dot-lab", "backend-dot-game", "backend-dot-home", "backend-dot-gallery"];
 
   function setStatus(online) {
     for (const id of DOT_IDS) {
