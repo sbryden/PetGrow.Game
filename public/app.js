@@ -2087,7 +2087,7 @@ function applyPartStyles(centers, boxes) {
 /**
  * Normalize detector output keys to the DOM layer schema used by petImgs.
  * The detector may emit either legacy anatomical names or the newer split
- * limb names, while rendering uses rigging-layer names (hat, face, leftBicep, ...).
+ * limb names, while rendering uses layer names (hat, face, leftBicep, ...).
  */
 function normalizeDetectedResult(result) {
   if (!result || !result.sprites) return result;
