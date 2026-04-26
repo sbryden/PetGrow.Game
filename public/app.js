@@ -380,7 +380,7 @@ function updateHatchButton() {
   hatchBtn.disabled = !(hasAnimal && hasName);
 
   if (hasAnimal && hasName) {
-    hatchHint.textContent = "Ready to hatch! 🎉";
+    hatchHint.textContent = "Ready to hatch!";
     hatchHint.style.color = "#00e676";
   } else if (hasAnimal) {
     hatchHint.textContent = "Now give your creature a name!";
@@ -484,7 +484,7 @@ function startHeatLampGame() {
 
       // Update status text
       if (lampOn) {
-        lampStatus.textContent = "🔥 Lamp is ON — heating up!";
+        lampStatus.textContent = "Lamp is ON — heating up!";
         lampStatus.className = "lamp-status on";
       } else {
         lampStatus.textContent = "Lamp is OFF — press SPACE";
@@ -533,10 +533,10 @@ function endHeatLampGame() {
 
   // Brief result flash
   if (greenPct >= 50) {
-    lampStatus.textContent = `☀️ Great warming! (${Math.round(greenPct)}% in green)`;
+    lampStatus.textContent = `Great warming! (${Math.round(greenPct)}% in green)`;
     lampStatus.className = "lamp-status on";
   } else {
-    lampStatus.textContent = `❄️ Could be warmer... (${Math.round(greenPct)}% in green)`;
+    lampStatus.textContent = `Could be warmer... (${Math.round(greenPct)}% in green)`;
     lampStatus.className = "lamp-status off";
   }
 
@@ -590,7 +590,7 @@ hatchBtn.addEventListener("click", async () => {
   await sleep(1500);
 
   // Phase 2: Cracks appearing
-  hatchingEgg.textContent = "🪺";
+  hatchingEgg.textContent = "";
   hatchingText.textContent = "Cracks are forming!";
   await sleep(1400);
 
@@ -599,22 +599,20 @@ hatchBtn.addEventListener("click", async () => {
   await sleep(1200);
 
   // Phase 3: Hatching!
-  hatchingEgg.textContent = "💥";
-  hatchingText.textContent = "IT'S HATCHING!";
-  PetAudio.play('hatch');
+  hatchingEgg.textContent = "!";
   await sleep(800);
 
   // Wait for image — if API is slow, the hatching text stays visible
-  hatchingEgg.textContent = "✨";
+  hatchingEgg.textContent = "*";
   try {
     await imagePromise;
   } catch (err) {
     console.error("Image generation failed:", err);
-    hatchingText.textContent = "Egg Failed to Hatch 😢";
+    hatchingText.textContent = "Egg Failed to Hatch";
     await sleep(2000);
     hatchingOverlay.style.display = "none";
     hatchingOverlay.classList.add("hidden");
-    hatchingEgg.textContent = "🥚";
+    hatchingEgg.textContent = "";
     suppressSpinner = false;
     return;
   }
@@ -624,7 +622,7 @@ hatchBtn.addEventListener("click", async () => {
   // Switch to home screen
   hatchingOverlay.style.display = "none";
   hatchingOverlay.classList.add("hidden");
-  hatchingEgg.textContent = "🥚";
+  hatchingEgg.textContent = "";
   showHome();
 
   // Update all displays
@@ -2331,14 +2329,14 @@ function updateGameDisplay() {
   // Update level badge
   levelBadge.className = "level-badge";
   if (gameState.level === LEVEL_BABY) {
-    levelBadge.textContent = "🍼 Baby";
+    levelBadge.textContent = "Baby";
     progressBar.className = "progress-bar";
   } else if (gameState.level === LEVEL_TEEN) {
-    levelBadge.textContent = "💥 Teenager";
+    levelBadge.textContent = "Teenager";
     levelBadge.classList.add("teenager");
     progressBar.className = "progress-bar teenager";
   } else {
-    levelBadge.textContent = "👑 Legendary";
+    levelBadge.textContent = "Legendary";
     levelBadge.classList.add("legendary");
     progressBar.className = "progress-bar legendary";
   }
@@ -2351,7 +2349,7 @@ function updateGameDisplay() {
     const remaining = LEGEND_THRESHOLD - gameState.clicks;
     nextLevel.textContent = `${remaining} to Legend`;
   } else {
-    nextLevel.textContent = "MAX! 🏆";
+    nextLevel.textContent = "MAX!";
   }
 
   // Update progress bar
@@ -2381,7 +2379,7 @@ function updateGameDisplay() {
   // Update rarity badge
   const rarity = calculateRarity(gameState.ingredients);
   if (rarityBadge) {
-    rarityBadge.textContent = `⭐ ${rarity.name}`;
+    rarityBadge.textContent = `${rarity.name}`;
     rarityBadge.className = `rarity-badge ${rarity.cls}`;
   }
 
@@ -2705,7 +2703,7 @@ async function triggerWashAnimation(emoji) {
     const b = document.createElement("div");
     b.className = "wash-bubble";
     // First few are the clicked item, rest are bubbles
-    b.textContent = i < 4 ? washEmoji : "🫧";
+    b.textContent = i < 4 ? washEmoji : "";
     b.style.left = `${rect.left + rect.width * 0.1 + Math.random() * rect.width * 0.8}px`;
     b.style.top = `${rect.top + rect.height * 0.1 + Math.random() * rect.height * 0.8}px`;
     b.style.animationDelay = `${Math.random() * 0.4}s`;
@@ -2735,7 +2733,7 @@ async function triggerWashAnimation(emoji) {
       const side = Math.random() > 0.5 ? 1 : -1;
       const drop = document.createElement("div");
       drop.className = "wash-droplet";
-      drop.textContent = "💧";
+      drop.textContent = "";
       drop.style.left = `${rect.left + rect.width / 2 + side * rect.width * 0.25}px`;
       drop.style.top = `${rect.top + rect.height * 0.2 + Math.random() * rect.height * 0.6}px`;
       drop.style.setProperty("--fly-x", `${side * (30 + Math.random() * 50)}px`);
@@ -2832,7 +2830,7 @@ btnStatus.addEventListener("click", () => {
   } else if (gameState.level === LEVEL_TEEN) {
     popupNext.textContent = `${LEGEND_THRESHOLD - gameState.clicks} clicks to Legendary Adult`;
   } else {
-    popupNext.textContent = "You reached the max level! 🏆";
+    popupNext.textContent = "You reached the max level!";
   }
 
   // Job info
@@ -2858,14 +2856,14 @@ btnStatus.addEventListener("click", () => {
   // Rarity
   if (popupRarity) {
     const rarity = calculateRarity(gameState.ingredients);
-    popupRarity.textContent = `⭐ ${rarity.name}`;
+    popupRarity.textContent = `${rarity.name}`;
     popupRarity.style.color = rarity.cls === 'epic' ? 'var(--accent-purple)' : rarity.cls === 'rare' ? 'var(--accent-cyan)' : rarity.cls === 'uncommon' ? 'var(--accent-green)' : 'var(--text-dim)';
   }
 
   // Build needs display
   if (popupNeeds) {
     popupNeeds.innerHTML = "";
-    const needLabels = { hunger: "🍖 Hunger", cleanliness: "🧼 Clean", fun: "🎾 Fun", energy: "💤 Energy" };
+    const needLabels = { hunger: "Hunger", cleanliness: "Clean", fun: "Fun", energy: "Energy" };
     for (const [key, label] of Object.entries(needLabels)) {
       const p = document.createElement("p");
       const val = gameState.needs[key];
@@ -2957,7 +2955,7 @@ function getCurrentCreatureSnapshot() {
 
 function getRoomName(roomId) {
   const room = ROOMS.find((entry) => entry.id === normalizeRoomId(roomId));
-  return room ? `${room.emoji} ${room.name}` : "🏠 The House";
+  return room ? `${room.name}` : "The House";
 }
 
 function renderActiveCreatureCard() {
@@ -3002,12 +3000,12 @@ function renderActiveCreatureCard() {
   if (activeCreature.ingredients) {
     const tags = document.createElement("div");
     tags.className = "gallery-tags";
-    const labels = { animal: "🐾", color: "🎨", wildcard: "🃏", element: "✨" };
+    const labels = { animal: "Animal", color: "Color", wildcard: "Wild Card", element: "Element" };
     for (const [key, emoji] of Object.entries(labels)) {
       if (!activeCreature.ingredients[key]) continue;
       const tag = document.createElement("span");
       tag.className = "gallery-tag";
-      tag.textContent = `${emoji} ${activeCreature.ingredients[key]}`;
+      tag.textContent = `${emoji}: ${activeCreature.ingredients[key]}`;
       tags.appendChild(tag);
     }
     galleryActiveCard.appendChild(tags);
@@ -3085,9 +3083,9 @@ async function renderGallery() {
 
   const allStages = [LEVEL_BABY, LEVEL_TEEN, LEVEL_LEGEND];
   const stageEmojis = {
-    [LEVEL_BABY]: "🍼",
-    [LEVEL_TEEN]: "💥",
-    [LEVEL_LEGEND]: "👑",
+    [LEVEL_BABY]: "",
+    [LEVEL_TEEN]: "",
+    [LEVEL_LEGEND]: "",
   };
 
   gallery.forEach((creature) => {
@@ -3097,7 +3095,7 @@ async function renderGallery() {
     // Delete button
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "gallery-delete-btn";
-    deleteBtn.textContent = "🗑️";
+    deleteBtn.textContent = "X";
     deleteBtn.title = "Delete from gallery";
     deleteBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -3118,19 +3116,19 @@ async function renderGallery() {
       const rarity = calculateRarity(creature.ingredients);
       const rarityTag = document.createElement("span");
       rarityTag.className = `gallery-rarity-tag ${rarity.cls}`;
-      rarityTag.textContent = `⭐ ${rarity.name}`;
+      rarityTag.textContent = `${rarity.name}`;
       card.appendChild(rarityTag);
     }
 
     // Ingredient tags
     const tags = document.createElement("div");
     tags.className = "gallery-tags";
-    const labels = { animal: "🐾", color: "🎨", wildcard: "🃏", element: "✨" };
+    const labels = { animal: "Animal", color: "Color", wildcard: "Wild Card", element: "Element" };
     for (const [key, emoji] of Object.entries(labels)) {
       if (creature.ingredients && creature.ingredients[key]) {
         const tag = document.createElement("span");
         tag.className = "gallery-tag";
-        tag.textContent = `${emoji} ${creature.ingredients[key]}`;
+        tag.textContent = `${emoji}: ${creature.ingredients[key]}`;
         tags.appendChild(tag);
       }
     }
@@ -3154,13 +3152,13 @@ async function renderGallery() {
         slot.className = "gallery-stage locked";
         const lock = document.createElement("div");
         lock.className = "gallery-lock-icon";
-        lock.textContent = "🔒";
+        lock.textContent = "[locked]";
         slot.appendChild(lock);
       }
 
       const label = document.createElement("span");
       label.className = "gallery-stage-label";
-      label.textContent = `${stageEmojis[stage]} ${stage}`;
+      label.textContent = `${stageEmojis[stage]} ${stage}`.trim();
       slot.appendChild(label);
 
       stages.appendChild(slot);
@@ -3171,7 +3169,7 @@ async function renderGallery() {
     // Level reached badge
     const badge = document.createElement("div");
     badge.className = "gallery-level-badge";
-    badge.textContent = `Reached: ${stageEmojis[creature.level]} ${creature.level}`;
+    badge.textContent = `Reached: ${stageEmojis[creature.level]} ${creature.level}`.trim();
     if (creature.level === LEVEL_LEGEND) badge.classList.add("legendary");
     if (creature.level === LEVEL_TEEN) badge.classList.add("teenager");
     card.appendChild(badge);
@@ -3179,7 +3177,7 @@ async function renderGallery() {
     // Equip button
     const equipBtn = document.createElement("button");
     equipBtn.className = "gallery-equip-btn";
-    equipBtn.textContent = "🐾 Equip";
+    equipBtn.textContent = "Equip";
     equipBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       equipPet(creature);
@@ -3259,7 +3257,7 @@ async function equipPet(creature) {
   startIdleFidgets();
   startNeedDecayTimer();
 
-  console.log("🐾 Equipped pet from gallery:", gameState.petName);
+  console.log("Equipped pet from gallery:", gameState.petName);
 }
 
 function clearActiveGameTimers() {
@@ -3322,7 +3320,7 @@ let galleryDetailCreature = null;
 
 function openGalleryDetail(creature) {
   galleryDetailCreature = creature;
-  const stageEmojis = { [LEVEL_BABY]: "🍼", [LEVEL_TEEN]: "💥", [LEVEL_LEGEND]: "👑" };
+  const stageEmojis = { [LEVEL_BABY]: "", [LEVEL_TEEN]: "", [LEVEL_LEGEND]: "" };
   const allStages = [LEVEL_BABY, LEVEL_TEEN, LEVEL_LEGEND];
 
   // Name
@@ -3332,12 +3330,12 @@ function openGalleryDetail(creature) {
   if (creature.ingredients) {
     const rarity = calculateRarity(creature.ingredients);
     const badge = $("gallery-detail-rarity");
-    badge.textContent = `⭐ ${rarity.name}`;
+    badge.textContent = `${rarity.name}`;
     badge.className = `rarity-badge ${rarity.cls}`;
   }
 
   // Level
-  $("gallery-detail-level").textContent = `${stageEmojis[creature.level] || ""} ${creature.level}`;
+  $("gallery-detail-level").textContent = `${stageEmojis[creature.level] || ""} ${creature.level}`.trim();
 
   // Clicks
   $("gallery-detail-clicks").textContent = creature.clicks || 0;
@@ -3349,12 +3347,12 @@ function openGalleryDetail(creature) {
   // Ingredients
   const tagsEl = $("gallery-detail-tags");
   tagsEl.innerHTML = "";
-  const labels = { animal: "🐾", color: "🎨", wildcard: "🃏", element: "✨" };
+  const labels = { animal: "Animal", color: "Color", wildcard: "Wild Card", element: "Element" };
   for (const [key, emoji] of Object.entries(labels)) {
     if (creature.ingredients && creature.ingredients[key]) {
       const tag = document.createElement("span");
       tag.className = "gallery-tag";
-      tag.textContent = `${emoji} ${creature.ingredients[key]}`;
+      tag.textContent = `${emoji}: ${creature.ingredients[key]}`;
       tagsEl.appendChild(tag);
     }
   }
@@ -3375,12 +3373,12 @@ function openGalleryDetail(creature) {
       slot.className = "gallery-detail-stage locked";
       const lock = document.createElement("div");
       lock.className = "gallery-lock-icon";
-      lock.textContent = "🔒";
+      lock.textContent = "[locked]";
       slot.appendChild(lock);
     }
     const label = document.createElement("span");
     label.className = "gallery-stage-label";
-    label.textContent = `${stageEmojis[stage]} ${stage}`;
+    label.textContent = `${stageEmojis[stage]} ${stage}`.trim();
     slot.appendChild(label);
     stagesEl.appendChild(slot);
   });
@@ -4437,7 +4435,7 @@ async function openBreedPicker() {
         placeholder.style.alignItems = "center";
         placeholder.style.justifyContent = "center";
         placeholder.style.fontSize = "1.5rem";
-        placeholder.textContent = "🥚";
+        placeholder.textContent = "?";
         card.appendChild(placeholder);
       }
 
@@ -4452,7 +4450,7 @@ async function openBreedPicker() {
 
       const tags = document.createElement("div");
       tags.className = "breed-picker-tags";
-      const labels = { animal: "🐾", color: "🎨", wildcard: "🃏", element: "✨" };
+      const labels = { animal: "Animal", color: "Color", wildcard: "Wild Card", element: "Element" };
       for (const [key, emoji] of Object.entries(labels)) {
         if (creature.ingredients[key]) {
           const tag = document.createElement("span");
@@ -4573,31 +4571,31 @@ btnBreedGo.addEventListener("click", async () => {
   hatchingText.textContent = "Their essences are merging!";
   await sleep(1500);
 
-  hatchingEgg.textContent = "💕";
+  hatchingEgg.textContent = "";
   hatchingText.textContent = "A new egg is forming!";
   await sleep(1400);
 
-  hatchingEgg.textContent = "🥚";
+  hatchingEgg.textContent = "egg";
   hatchingText.textContent = "The egg glows with new life!";
   await sleep(1200);
 
   hatchingText.textContent = "Cracks are appearing!";
   await sleep(1000);
 
-  hatchingEgg.textContent = "💥";
+  hatchingEgg.textContent = "!";
   hatchingText.textContent = "IT'S HATCHING!";
   await sleep(1000);
 
-  hatchingEgg.textContent = "✨";
+  hatchingEgg.textContent = "*";
   try {
     await imagePromise;
   } catch (err) {
     console.error("Breeding image failed:", err);
-    hatchingText.textContent = "Breeding Failed 😢";
+    hatchingText.textContent = "Breeding Failed";
     await sleep(2000);
     hatchingOverlay.style.display = "none";
     hatchingOverlay.classList.add("hidden");
-    hatchingEgg.textContent = "🥚";
+    hatchingEgg.textContent = "";
     suppressSpinner = false;
     return;
   }
@@ -4607,7 +4605,7 @@ btnBreedGo.addEventListener("click", async () => {
   // Switch to home screen after breeding hatch
   hatchingOverlay.style.display = "none";
   hatchingOverlay.classList.add("hidden");
-  hatchingEgg.textContent = "🥚";
+  hatchingEgg.textContent = "";
   showHome();
   updateGameDisplay();
   saveGame();
@@ -4634,7 +4632,7 @@ function updateBreedingRoomProps(propsContainer) {
   } else {
     const emoji1 = document.createElement("div");
     emoji1.className = "breed-box-emoji";
-    emoji1.textContent = "🐾";
+    emoji1.textContent = "";
     box1.appendChild(emoji1);
   }
   const label1 = document.createElement("div");
@@ -4655,7 +4653,7 @@ function updateBreedingRoomProps(propsContainer) {
   box2.style.top = "55%";
   const plus = document.createElement("div");
   plus.className = "breed-box-emoji";
-  plus.textContent = "➕";
+  plus.textContent = "+";
   box2.appendChild(plus);
   const label2 = document.createElement("div");
   label2.className = "breed-box-label";
@@ -4670,7 +4668,7 @@ function updateBreedingRoomProps(propsContainer) {
   // Add decorative sparkles
   const sparkle1 = document.createElement("div");
   sparkle1.className = "room-prop";
-  sparkle1.textContent = "✨";
+  sparkle1.textContent = "";
   sparkle1.style.left = "45%";
   sparkle1.style.top = "25%";
   sparkle1.style.fontSize = "2rem";
@@ -4678,7 +4676,7 @@ function updateBreedingRoomProps(propsContainer) {
 
   const sparkle2 = document.createElement("div");
   sparkle2.className = "room-prop";
-  sparkle2.textContent = "🔮";
+  sparkle2.textContent = "";
   sparkle2.style.left = "48%";
   sparkle2.style.top = "78%";
   sparkle2.style.fontSize = "1.8rem";
@@ -4818,13 +4816,13 @@ for (const id of ["btn-sound-lab", "btn-sound-game", "btn-sound-home", "btn-soun
   const btn = $(id);
   if (btn) {
     // Set initial label
-    btn.textContent = PetAudio.enabled ? "🔊" : "🔇";
+    btn.textContent = PetAudio.enabled ? "[ON]" : "[OFF]";
     btn.addEventListener("click", () => {
       PetAudio.toggle();
       // Sync all sound buttons
       for (const bid of ["btn-sound-lab", "btn-sound-game", "btn-sound-home", "btn-sound-gallery"]) {
         const b = $(bid);
-        if (b) b.textContent = PetAudio.enabled ? "🔊" : "🔇";
+        if (b) b.textContent = PetAudio.enabled ? "[ON]" : "[OFF]";
       }
       PetAudio.play("click");
     });

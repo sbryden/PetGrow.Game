@@ -20,7 +20,7 @@
       <div class="boot-loading-animation" aria-hidden="true">
         <span class="boot-loading-ring"></span>
         <span class="boot-loading-ring boot-loading-ring-delay"></span>
-        <span class="boot-loading-core">🥚</span>
+        <span class="boot-loading-core"></span>
       </div>
       <h1 class="game-title">PetGrow</h1>
       <p class="boot-loading-text">Loading your creatures...</p>
@@ -30,9 +30,9 @@
   <!-- ========== SCREEN 1: EGG LAB ========== -->
   <div id="egg-lab" class="screen hidden">
     <div class="top-bar">
-      <button id="btn-sound-lab" class="sound-toggle" title="Toggle sound">🔊</button>
+      <button id="btn-sound-lab" class="sound-toggle" title="Toggle sound"></button>
       <span id="backend-dot-lab" class="backend-dot" title="Backend: checking…"></span>
-      <h1 class="game-title">🥚 PetGrow</h1>
+      <h1 class="game-title">PetGrow</h1>
     </div>
     <p class="subtitle">Mix ingredients into your egg and hatch a creature!</p>
 
@@ -180,7 +180,7 @@
         <div class="gauge-labels">
           <span class="gauge-label-cold">❄️ Cold</span>
           <span class="gauge-label-good">✅ Perfect</span>
-          <span class="gauge-label-hot">🔥 Hot!</span>
+          <span class="gauge-label-hot">Hot!</span>
         </div>
       </div>
 
@@ -200,17 +200,18 @@
     </div>
 
     <!-- Hatch Button -->
-    <button id="hatch-btn" class="hatch-btn" disabled>🥚 HATCH IT!</button>
+    <button id="hatch-btn" class="hatch-btn" disabled>HATCH IT!</button>
     <p id="hatch-hint" class="hint">Pick at least a Base Animal and give it a name!</p>
 
     <!-- Gallery Button -->
-    <button id="btn-gallery-lab" class="gallery-nav-btn">🏆 My Creatures</button>
+    <button id="btn-gallery-lab" class="gallery-nav-btn">My Creatures</button>
+    <a class="gallery-nav-btn" href="rigging-tool/index.html">Rigging Studio</a>
   </div>
 
   <!-- ========== HATCHING ANIMATION OVERLAY ========== -->
   <div id="hatching-overlay" class="overlay hidden">
     <div class="hatching-content">
-      <div id="hatching-egg" class="egg hatching">🥚</div>
+      <div id="hatching-egg" class="egg hatching"></div>
       <p id="hatching-text" class="hatching-text">Your egg is hatching...</p>
     </div>
   </div>
@@ -218,34 +219,34 @@
   <!-- ========== SCREEN 2: PET GAME ========== -->
   <div id="pet-game" class="screen hidden">
     <div class="top-bar">
-      <button id="btn-sound-game" class="sound-toggle" title="Toggle sound">🔊</button>
+      <button id="btn-sound-game" class="sound-toggle" title="Toggle sound"></button>
       <span id="backend-dot-game" class="backend-dot" title="Backend: checking…"></span>
-      <h1 class="game-title-small">🥚 PetGrow</h1>
+      <h1 class="game-title-small">PetGrow</h1>
     </div>
 
     <!-- Needs HUD -->
     <div id="needs-hud" class="needs-hud" style="display:none">
       <div class="need-bar">
-        <span class="need-icon">🍖</span>
+        <span class="need-icon"></span>
         <div class="need-track"><div class="need-fill" id="need-hunger"></div></div>
       </div>
       <div class="need-bar">
-        <span class="need-icon">🧼</span>
+        <span class="need-icon"></span>
         <div class="need-track"><div class="need-fill" id="need-cleanliness"></div></div>
       </div>
       <div class="need-bar">
-        <span class="need-icon">🎾</span>
+        <span class="need-icon"></span>
         <div class="need-track"><div class="need-fill" id="need-fun"></div></div>
       </div>
       <div class="need-bar">
-        <span class="need-icon">💤</span>
+        <span class="need-icon"></span>
         <div class="need-track"><div class="need-fill" id="need-energy"></div></div>
       </div>
     </div>
 
     <!-- Creature Display -->
     <div class="creature-card" id="creature-card">
-      <div class="room-indicator" id="room-indicator">🏠 The House</div>
+      <div class="room-indicator" id="room-indicator">The House</div>
       <div id="game-world" class="game-world">
         <div id="scene-root" class="scene-root">
           <div id="room-bg" class="room-bg"></div>
@@ -286,7 +287,7 @@
       <h2 id="creature-name" class="creature-name">My Pet</h2>
       <div class="creature-badges">
         <span id="rarity-badge" class="rarity-badge"></span>
-        <div class="level-badge" id="level-badge">🍼 Baby</div>
+        <div class="level-badge" id="level-badge">Baby</div>
       </div>
       <p id="creature-desc" class="creature-desc"></p>
     </div>
@@ -326,18 +327,19 @@
 
     <!-- Bottom Buttons -->
     <div class="bottom-buttons" style="display:none">
-      <button id="btn-new-creature" class="new-creature-btn">🥚 New Creature</button>
-      <button id="btn-discard" class="discard-btn">🗑️ Discard</button>
-      <button id="btn-gallery-game" class="gallery-nav-btn">🏆 My Creatures</button>
+      <button id="btn-new-creature" class="new-creature-btn">New Creature</button>
+      <button id="btn-discard" class="discard-btn">Discard</button>
+      <button id="btn-gallery-game" class="gallery-nav-btn">My Creatures</button>
+      <a class="gallery-nav-btn" href="rigging-tool/index.html">Rigging Studio</a>
     </div>
   </div>
 
   <!-- ========== SCREEN: PET HOME ========== -->
   <div id="pet-home" class="screen hidden">
     <div class="top-bar">
-      <button id="btn-sound-home" class="sound-toggle" title="Toggle sound">🔊</button>
+      <button id="btn-sound-home" class="sound-toggle" title="Toggle sound"></button>
       <span id="backend-dot-home" class="backend-dot" title="Backend: checking…"></span>
-      <h1 class="game-title-small">🥚 PetGrow</h1>
+      <h1 class="game-title-small">PetGrow</h1>
     </div>
     <div class="home-body">
       <!-- creature-card is moved here dynamically when on the home screen -->
@@ -347,9 +349,9 @@
   <!-- ========== SCREEN 3: GALLERY ========== -->
   <div id="gallery" class="screen hidden">
     <div class="top-bar">
-      <button id="btn-sound-gallery" class="sound-toggle" title="Toggle sound">🔊</button>
+      <button id="btn-sound-gallery" class="sound-toggle" title="Toggle sound"></button>
       <span id="backend-dot-gallery" class="backend-dot" title="Backend: checking…"></span>
-      <h1 class="game-title-small">🏆 My Creatures</h1>
+      <h1 class="game-title-small">My Creatures</h1>
     </div>
     <p class="gallery-subtitle">Your collection of hatched creatures</p>
 
@@ -371,11 +373,11 @@
 
     <div id="gallery-grid" class="gallery-grid"></div>
 
-    <p id="gallery-empty" class="gallery-empty hidden">No creatures in storage yet. Create one or archive a current creature to see it here. 🥚</p>
+    <p id="gallery-empty" class="gallery-empty hidden">No creatures in storage yet. Create one or archive a current creature to see it here.</p>
 
     <div class="gallery-screen-actions">
-      <button id="btn-gallery-new" class="new-creature-btn">🥚 Create New Creature</button>
-      <button id="btn-gallery-back" class="new-creature-btn hidden">⬅️ Back</button>
+      <button id="btn-gallery-new" class="new-creature-btn">Create New Creature</button>
+      <button id="btn-gallery-back" class="new-creature-btn hidden">Back</button>
     </div>
   </div>
 
@@ -394,8 +396,8 @@
         <div class="gallery-detail-tags" id="gallery-detail-tags"></div>
       </div>
       <div class="gallery-detail-buttons">
-        <button id="gallery-detail-equip" class="gallery-equip-btn">🐾 Equip This Pet</button>
-        <button id="gallery-detail-back" class="breed-cancel-btn">⬅️ Back</button>
+        <button id="gallery-detail-equip" class="gallery-equip-btn">Equip This Pet</button>
+        <button id="gallery-detail-back" class="breed-cancel-btn">Back</button>
       </div>
     </div>
   </div>
@@ -403,7 +405,7 @@
   <!-- ========== STATUS POPUP ========== -->
   <div id="status-popup" class="overlay hidden">
     <div class="popup-card">
-      <h2>📊 Status Report</h2>
+      <h2>Status Report</h2>
       <div class="popup-stats">
         <p><strong>Name:</strong> <span id="popup-name"></span></p>
         <p><strong>Level:</strong> <span id="popup-level"></span></p>
@@ -418,14 +420,14 @@
         <p><strong>Needs:</strong></p>
         <div id="popup-needs" class="popup-needs"></div>
       </div>
-      <button id="popup-close" class="action-btn feed-btn">Got it! ✅</button>
+      <button id="popup-close" class="action-btn feed-btn">Got it!</button>
     </div>
   </div>
 
   <!-- ========== EVOLUTION OVERLAY ========== -->
   <div id="evolve-overlay" class="overlay hidden">
     <div class="hatching-content">
-      <div class="evolve-flash">⚡</div>
+      <div class="evolve-flash"></div>
       <p class="hatching-text" id="evolve-text">Your creature is evolving!</p>
     </div>
   </div>
@@ -433,17 +435,17 @@
   <!-- ========== JOB PICKER OVERLAY ========== -->
   <div id="job-picker-overlay" class="overlay hidden">
     <div class="job-picker-panel">
-      <h2 class="job-picker-title">💼 Choose a Path</h2>
+      <h2 class="job-picker-title">Choose a Path</h2>
       <p class="job-picker-subtitle">Your creature is about to become legendary! Pick a job to shape their destiny.</p>
       <div id="job-picker-grid" class="job-picker-grid"></div>
-      <button id="job-picker-no-job" class="job-no-job-btn">🦥 Nah... No Job (Slouch Life)</button>
+      <button id="job-picker-no-job" class="job-no-job-btn">Nah... No Job (Slouch Life)</button>
     </div>
   </div>
 
   <!-- ========== BREEDING OVERLAY ========== -->
   <div id="breeding-overlay" class="overlay hidden">
     <div class="breeding-panel">
-      <h2 class="breeding-title">🥚 Breeding Room</h2>
+      <h2 class="breeding-title">Breeding Room</h2>
       <p class="breeding-subtitle">Combine two creatures to create a new one!</p>
 
       <div class="breeding-slots">
@@ -454,7 +456,7 @@
         </div>
 
         <!-- Heart / plus icon in the middle -->
-        <div class="breed-heart">💕</div>
+        <div class="breed-heart"></div>
 
         <!-- Slot 2: Pick from gallery -->
         <div class="breed-slot empty" id="breed-slot-2">
@@ -468,10 +470,10 @@
       </div>
 
       <!-- Breed button -->
-      <button id="btn-breed-go" class="breed-go-btn" disabled>🥚 BREED!</button>
+      <button id="btn-breed-go" class="breed-go-btn" disabled>BREED!</button>
 
       <!-- Cancel -->
-      <button id="btn-breed-cancel" class="breed-cancel-btn">⬅️ Cancel</button>
+      <button id="btn-breed-cancel" class="breed-cancel-btn">Cancel</button>
     </div>
   </div>
 
@@ -481,8 +483,8 @@
       <h2 class="breeding-title">Choose a Mate</h2>
       <p class="breeding-subtitle">Pick a creature from your collection</p>
       <div id="breed-picker-grid" class="breed-picker-grid"></div>
-      <p id="breed-picker-empty" class="gallery-empty hidden">No creatures in your gallery yet! Discard some creatures first. 🥚</p>
-      <button id="btn-breed-picker-cancel" class="breed-cancel-btn">⬅️ Back</button>
+      <p id="breed-picker-empty" class="gallery-empty hidden">No creatures in your gallery yet! Discard some creatures first.</p>
+      <button id="btn-breed-picker-cancel" class="breed-cancel-btn">Back</button>
     </div>
   </div>
 
