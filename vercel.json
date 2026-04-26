@@ -2,5 +2,7 @@
   "version": 2,
   "name": "petgrow-game",
   "public": false,
-  "outputDirectory": "public"
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
 }
