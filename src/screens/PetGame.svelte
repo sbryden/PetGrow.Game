@@ -453,8 +453,7 @@
   function openGallery()  { goTo('gallery'); }
   function toggleAudio()  { audioOn = toggle(); }
 
-  async function retireToGallery() {
-    if (!confirm(`Retire ${petName} to the gallery?`)) return;
+  async function hibernateToGallery() {
     await saveCreature({
       petName: state.petName, level: state.level,
       ingredients: { ...state.ingredients }, job: state.job,
@@ -463,7 +462,7 @@
       createdAt: state.createdAt || Date.now(), retiredAt: Date.now(),
     });
     await gameStore.reset();
-    goTo('egg-lab');
+    goTo('gallery');
   }
 
   // ── Lifecycle ─────────────────────────────────────────────
@@ -600,7 +599,7 @@
   <!-- Bottom bar -->
   <footer class="bottom-bar">
     <span class="clicks-label">⭐ {clicks} clicks</span>
-    <button class="btn-retire" onclick={retireToGallery}>Retire</button>
+    <button class="btn-hibernate" onclick={hibernateToGallery}>Hibernate</button>
   </footer>
 
 </div>
@@ -763,10 +762,10 @@
     background: #0f1120; border-top: 1px solid #2a2f4a; flex-shrink: 0;
   }
   .clicks-label { font-size: 0.75rem; color: #ffd700; }
-  .btn-retire {
+  .btn-hibernate {
     background: none; border: 2px solid #e9456044; border-radius: 8px;
     padding: 0.3rem 0.75rem; font-family: inherit; font-size: 0.7rem; color: #e94560;
     transition: border-color 0.2s;
   }
-  .btn-retire:hover { border-color: #e94560; }
+  .btn-hibernate:hover { border-color: #e94560; }
 </style>

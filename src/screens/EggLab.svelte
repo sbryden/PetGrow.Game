@@ -1,9 +1,10 @@
 <script>
+  import { get } from 'svelte/store';
   import { gameStore } from '../stores/gameStore.js';
   import { currentScreen, goTo } from '../stores/uiStore.js';
   import { play } from '../lib/audio.js';
   import { CREATURE_NAMES } from '../systems/constants.js';
-  import { loadAll } from '../lib/db.js';
+  import { loadAll, saveCreature } from '../lib/db.js';
   import BackendStatus from '../components/BackendStatus.svelte';
 
   // ── Ingredient options ────────────────────────────────────
@@ -83,8 +84,20 @@
     petName = pool[Math.floor(Math.random() * pool.length)];
   }
 
-  function onHatch() {
+  async function onHatch() {
     if (!canHatch) return;
+    // Auto-hibernate any active creature before starting a new one
+    const current = get(gameStore);
+    if (current.createdAt) {
+      await saveCreature({
+        petName: current.petName, level: current.level,
+        ingredients: { ...current.ingredients }, job: current.job,
+        clicks: current.clicks, needs: { ...current.needs },
+        cachedImages: { ...current.cachedImages },
+        createdAt: current.createdAt, retiredAt: Date.now(),
+      });
+      await gameStore.reset();
+    }
     gameStore.update(s => ({
       ...s,
       ingredients: { ...ingredients },
