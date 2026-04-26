@@ -58,13 +58,18 @@ const PLATFORM_DOOR_SLOTS = [32, 68];
 
 // ---------- 🏠 ROOMS ----------
 const ROOMS = [
-  { id: PLATFORM_ROOM_ID, name: "The House", emoji: "🏠", actions: [] },
-  { id: "lab",      name: "Lab",          emoji: "🧪", actions: [] },
-  { id: "feeding",  name: "Feeding Room",  emoji: "🍖", actions: ["feed"] },
-  { id: "bathroom", name: "Bathroom",      emoji: "🧼", actions: ["clean"] },
-  { id: "playroom", name: "Playroom",       emoji: "🎾", actions: ["play"] },
-  { id: "bedroom",  name: "Bedroom",        emoji: "🛏️", actions: ["sleep"] },
-  { id: "breeding", name: "Breeding Room",  emoji: "🥚", actions: ["breed"] },
+  { id: PLATFORM_ROOM_ID,   name: "The House",    emoji: "🏠", actions: [] },
+  { id: "lab",             name: "Lab",          emoji: "🧪", actions: [] },
+  { id: "lab-science",     name: "Science Room", emoji: "🔬", actions: [] },
+  { id: "lab-mix",         name: "Mix N' Mix",   emoji: "🧬", actions: [] },
+  { id: "lab-breeding",    name: "Breeding",     emoji: "💕", actions: [] },
+  { id: "lab-potions",     name: "Potions Room", emoji: "⚗️", actions: [] },
+  { id: "lab-enhancement", name: "Enhancement",  emoji: "⬆️", actions: [] },
+  { id: "feeding",         name: "Feeding Room", emoji: "🍖", actions: ["feed"] },
+  { id: "bathroom",        name: "Bathroom",     emoji: "🧼", actions: ["clean"] },
+  { id: "playroom",        name: "Playroom",     emoji: "🎾", actions: ["play"] },
+  { id: "bedroom",         name: "Bedroom",      emoji: "🛏️", actions: ["sleep"] },
+  { id: "breeding",        name: "Breeding Room",emoji: "🥚", actions: ["breed"] },
 ];
 
 const PLATFORM_ONLY_MODE = false;
@@ -150,6 +155,8 @@ function createInitialGameState() {
     parentJobs: [],
     bgCleaned: {},
     renderModes: {},
+    labFloor: 1,
+    labElevatorScrolling: false,
   };
 }
 
@@ -3476,6 +3483,8 @@ function restoreGameState(saved) {
   gameState.parentJobs = saved.parentJobs || [];
   gameState.bgCleaned = saved.bgCleaned || {};
   gameState.renderModes = saved.renderModes || {};
+  gameState.labFloor = saved.labFloor || 1;
+  gameState.labElevatorScrolling = false;
 }
 
 function persistGameNow() {
@@ -3564,6 +3573,8 @@ const platformCamera = { x: 0, y: 0, dirX: 0, dirY: 0, lookAngle: 0 };
 const platformDoors = [];
 let enteringRoom = false;
 let nearDoor = null;
+let nearElevator = false;
+const labElevatorState = { el: null, xPercent: 88 };
 
 function startIdleFidgets() {
   stopIdleFidgets();
@@ -3701,6 +3712,80 @@ function checkDoorProximity() {
   }
 }
 
+// ---------- 🛗 ELEVATOR PROXIMITY ----------
+function checkElevatorProximity() {
+  if (!labElevatorState.el || gameState.petX === null || gameState.labElevatorScrolling) {
+    return;
+  }
+  const size = getPetSize();
+  const petCx = gameState.petX + size / 2;
+  const worldW = Math.max(1, gameWorld.clientWidth);
+  // Elevator centre = left% * worldW + half elevator width
+  const elevCx = (labElevatorState.xPercent / 100) * worldW + (size * 0.45);
+  const dist = Math.abs(petCx - elevCx);
+  const wasNear = nearElevator;
+  nearElevator = dist < 120;
+
+  if (nearElevator !== wasNear) {
+    const hint = labElevatorState.el.querySelector(".elevator-hint");
+    if (nearElevator) {
+      labElevatorState.el.classList.add("lab-elevator--open");
+      if (hint) hint.style.opacity = "1";
+    } else {
+      labElevatorState.el.classList.remove("lab-elevator--open");
+      if (hint) hint.style.opacity = "0";
+    }
+  }
+}
+
+// ---------- 🛗 ELEVATOR RIDE ----------
+function enterElevator() {
+  if (gameState.labElevatorScrolling || enteringRoom) return;
+  gameState.labElevatorScrolling = true;
+  enteringRoom = true;
+
+  const targetFloor = gameState.labFloor === 1 ? 2 : 1;
+  const goingUp = targetFloor === 2;
+
+  // Step 1: Close elevator doors (300 ms)
+  const elevEl = labElevatorState.el;
+  if (elevEl) {
+    elevEl.classList.remove("lab-elevator--open");
+    elevEl.classList.add("lab-elevator--closing");
+  }
+
+  setTimeout(() => {
+    // Step 2: Hide pet — they're inside the elevator
+    petParts.style.opacity = "0";
+
+    // Step 3: Slide the scene away (800 ms linear)
+    const animClass = goingUp ? "lab-elevator-scroll-up" : "lab-elevator-scroll-down";
+    sceneRoot.classList.add(animClass);
+
+    setTimeout(() => {
+      // Step 4: Snap scene back, update floor, re-render
+      sceneRoot.classList.remove(animClass);
+      gameState.labFloor = targetFloor;
+      switchRoom("lab", true); // skipFade — scene already animated out
+
+      // Re-centre pet on the new floor
+      const sz = getPetSize();
+      gameState.petX = gameWorld.clientWidth / 2 - sz / 2;
+      gameState.petY = getFloorY();
+      petParts.style.left = `${gameState.petX}px`;
+      petParts.style.top = `${gameState.petY}px`;
+
+      // Step 5: Brief pause then reveal pet emerging from elevator
+      setTimeout(() => {
+        petParts.style.opacity = "1";
+        gameState.labElevatorScrolling = false;
+        enteringRoom = false;
+        nearElevator = false;
+      }, 200);
+    }, 800);
+  }, 300);
+}
+
 function startPlatformLoop() {
   if (platformLoopStarted) return;
   platformLoopStarted = true;
@@ -3711,28 +3796,31 @@ function startPlatformLoop() {
     lastPlatformTick = ts;
 
     if (petGame.classList.contains("active") && gameState.createdAt) {
-      const speed = 220;
-      let vx = 0;
-      if (platformKeys.a) vx -= 1;
-      if (platformKeys.d) vx += 1;
+      if (!gameState.labElevatorScrolling) {
+        const speed = 220;
+        let vx = 0;
+        if (platformKeys.a) vx -= 1;
+        if (platformKeys.d) vx += 1;
 
-      const moving = vx !== 0;
+        const moving = vx !== 0;
 
-      if (moving) {
-        const size = getPetSize();
-        const maxX = Math.max(0, gameWorld.clientWidth - size);
-        gameState.petX = Math.max(0, Math.min(maxX, gameState.petX + vx * speed * dt));
-        if (vx < 0) petParts.style.transform = "scaleX(-1)";
-        else if (vx > 0) petParts.style.transform = "scaleX(1)";
+        if (moving) {
+          const size = getPetSize();
+          const maxX = Math.max(0, gameWorld.clientWidth - size);
+          gameState.petX = Math.max(0, Math.min(maxX, gameState.petX + vx * speed * dt));
+          if (vx < 0) petParts.style.transform = "scaleX(-1)";
+          else if (vx > 0) petParts.style.transform = "scaleX(1)";
+        }
+
+        gameState.petY = getFloorY();
+        petParts.style.left = `${gameState.petX}px`;
+        petParts.style.top = `${gameState.petY}px`;
+
+        updatePlatformSceneMotion(dt, moving, vx, 0);
+        updatePlatformNearbyHighlight();
+        checkDoorProximity();
+        if (gameState.currentRoom === "lab") checkElevatorProximity();
       }
-
-      gameState.petY = getFloorY();
-      petParts.style.left = `${gameState.petX}px`;
-      petParts.style.top = `${gameState.petY}px`;
-
-      updatePlatformSceneMotion(dt, moving, vx, 0);
-      updatePlatformNearbyHighlight();
-      checkDoorProximity();
     }
 
     requestAnimationFrame(step);
@@ -3752,28 +3840,33 @@ function bindPlatformControls() {
     if (key === "d") platformKeys.d = true;
     if (e.key === "ArrowLeft")  { platformKeys.arrowLeft  = true; e.preventDefault(); }
     if (e.key === "ArrowRight") { platformKeys.arrowRight = true; e.preventDefault(); }
-    if (e.code === "Space" && nearDoor && !enteringRoom) {
-      e.preventDefault();
-      enteringRoom = true;
-      const roomId = nearDoor.roomId;
-      if (gameState.currentRoom === PLATFORM_ROOM_ID) {
-        platformCamera.platformReturnX = gameState.petX;
-      }
-      switchRoom(roomId);
-      const sz = getPetSize();
-      setTimeout(() => {
-        const newWorldW = gameWorld.clientWidth;
-        if (roomId === PLATFORM_ROOM_ID && platformCamera.platformReturnX != null) {
-          gameState.petX = platformCamera.platformReturnX;
-        } else {
-          gameState.petX = newWorldW / 2 - sz / 2;
+    if (e.code === "Space" && !enteringRoom) {
+      if (nearDoor) {
+        e.preventDefault();
+        enteringRoom = true;
+        const roomId = nearDoor.roomId;
+        if (gameState.currentRoom === PLATFORM_ROOM_ID) {
+          platformCamera.platformReturnX = gameState.petX;
         }
-        gameState.petY = getFloorY();
-        petParts.style.left = `${gameState.petX}px`;
-        petParts.style.top = `${gameState.petY}px`;
-        enteringRoom = false;
-        nearDoor = null;
-      }, 250);
+        switchRoom(roomId);
+        const sz = getPetSize();
+        setTimeout(() => {
+          const newWorldW = gameWorld.clientWidth;
+          if (roomId === PLATFORM_ROOM_ID && platformCamera.platformReturnX != null) {
+            gameState.petX = platformCamera.platformReturnX;
+          } else {
+            gameState.petX = newWorldW / 2 - sz / 2;
+          }
+          gameState.petY = getFloorY();
+          petParts.style.left = `${gameState.petX}px`;
+          petParts.style.top = `${gameState.petY}px`;
+          enteringRoom = false;
+          nearDoor = null;
+        }, 250);
+      } else if (nearElevator && !gameState.labElevatorScrolling) {
+        e.preventDefault();
+        enterElevator();
+      }
     }
   });
 
@@ -3888,8 +3981,112 @@ function updateRoomProps(room) {
     return;
   }
 
+  // ── LAB ROOM ──────────────────────────────────────────────────────────────
   if (room.id === "lab") {
+    labElevatorState.el = null;
+
+    // 3D floor
+    const labFloor = document.createElement("div");
+    labFloor.className = "room-floor";
+    propsContainer.appendChild(labFloor);
+
+    // Wall lights
+    [12, 30, 50, 70, 88].forEach((xPct) => {
+      const sconce = document.createElement("div");
+      sconce.className = "wall-light";
+      sconce.style.left = `${xPct}%`;
+      sconce.style.top = "18%";
+      propsContainer.appendChild(sconce);
+    });
+
+    // Stamp the floor class on the bg so CSS can tint floor 2 differently
+    roomBg.classList.toggle("lab-floor-2", gameState.labFloor === 2);
+
+    if (gameState.labFloor === 1) {
+      // ── Floor 1 ─────────────────────────────────────────────────────────
+      addDoor(5, PLATFORM_ROOM_ID, "exit", null);
+      addDoor(35, "lab-science", "teal", "🔬", "SCIENCE");
+      addDoor(65, "lab-mix", "purple", "🧬", "MIX N' MIX");
+    } else {
+      // ── Floor 2 ─────────────────────────────────────────────────────────
+      const floorSign = document.createElement("div");
+      floorSign.className = "lab-floor-indicator";
+      propsContainer.appendChild(floorSign);
+
+      addDoor(20, "lab-breeding", "pink", "💕", "BREEDING");
+      addDoor(50, "lab-potions", "purple", "⚗️", "POTIONS");
+      addDoor(75, "lab-enhancement", "orange", "⬆️", "ENHANCE");
+    }
+
+    // ── Elevator (both floors) ────────────────────────────────────────────
+    const petSz = getPetSize();
+    const elevWidth = Math.round(petSz * 0.9);
+    const elevHeight = Math.round(petSz * 1.15);
+
+    const elev = document.createElement("div");
+    elev.className = "lab-elevator";
+    elev.style.left = `${labElevatorState.xPercent}%`;
+    elev.style.bottom = "22%";
+    elev.style.width = `${elevWidth}px`;
+    elev.style.height = `${elevHeight}px`;
+
+    const doorPanelLeft = document.createElement("div");
+    doorPanelLeft.className = "elevator-door-panel elevator-door-left";
+    const doorPanelRight = document.createElement("div");
+    doorPanelRight.className = "elevator-door-panel elevator-door-right";
+
+    const floorBtn = document.createElement("div");
+    floorBtn.className = "elevator-floor-btn";
+    floorBtn.textContent = gameState.labFloor === 1 ? "▲" : "▼";
+
+    const elevHint = document.createElement("span");
+    elevHint.className = "elevator-hint";
+    elevHint.textContent = "SPACE to ride";
+
+    elev.appendChild(doorPanelLeft);
+    elev.appendChild(doorPanelRight);
+    elev.appendChild(floorBtn);
+    elev.appendChild(elevHint);
+    propsContainer.appendChild(elev);
+
+    labElevatorState.el = elev;
+
     updatePlatformSceneMotion(0.016, false);
+    return;
+  }
+
+  // ── LAB SUB-ROOMS ─────────────────────────────────────────────────────────
+  const LAB_SUB_ROOMS = {
+    "lab-science":     { emoji: "🔬", label: "Science Room" },
+    "lab-mix":         { emoji: "🧬", label: "Mix N' Mix" },
+    "lab-breeding":    { emoji: "💕", label: "Breeding" },
+    "lab-potions":     { emoji: "⚗️", label: "Potions Room" },
+    "lab-enhancement": { emoji: "⬆️", label: "Enhancement" },
+  };
+  if (LAB_SUB_ROOMS[room.id]) {
+    const subFloor = document.createElement("div");
+    subFloor.className = "room-floor";
+    propsContainer.appendChild(subFloor);
+
+    [12, 30, 50, 70, 88].forEach((xPct) => {
+      const sconce = document.createElement("div");
+      sconce.className = "wall-light";
+      sconce.style.left = `${xPct}%`;
+      sconce.style.top = "18%";
+      propsContainer.appendChild(sconce);
+    });
+
+    // Exit back to Lab (preserves labFloor)
+    addDoor(5, "lab", "exit", null);
+
+    // Placeholder center prop
+    const info = LAB_SUB_ROOMS[room.id];
+    const placeholder = document.createElement("div");
+    placeholder.className = "room-prop lab-stub-prop";
+    placeholder.textContent = info.emoji;
+    propsContainer.appendChild(placeholder);
+
+    return;
   }
 
   // ── PLATFORM (legacy fallback) ─────────────────────────────────────────────

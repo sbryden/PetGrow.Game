@@ -3501,7 +3501,203 @@ body {
     );
 }
 
-.room-bg.room-platform {
+/* Floor 2 tint — slightly warmer cyan-green to signal higher floor */
+.room-bg.room-lab.lab-floor-2 {
+  background:
+    linear-gradient(180deg, #0d1a14 0%, #0d1a14 7%, transparent 7%),
+    radial-gradient(ellipse 60% 42% at 18% 22%, rgba(70, 255, 190, 0.14) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 42% at 82% 22%, rgba(70, 255, 190, 0.14) 0%, transparent 100%),
+    repeating-linear-gradient(
+      180deg,
+      #0f2a1e 0px,  #0f2a1e 26px,
+      #143d2c 26px, #143d2c 28px,
+      #0d2218 28px, #0d2218 54px,
+      #17482e 54px, #17482e 56px,
+      #0f2a1e 56px
+    );
+}
+
+/* ── ELEVATOR ─────────────────────────────────────────────────────────────── */
+.lab-elevator {
+  position: absolute;
+  z-index: 7;
+  overflow: hidden;
+  border: 3px solid #1a4a6a;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #0c2030;
+  box-shadow:
+    0 0 0 1px rgba(70, 219, 255, 0.25),
+    inset 0 0 20px rgba(0, 0, 0, 0.6);
+}
+
+/* The two door panels — they start closed (meeting in center) */
+.elevator-door-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #1e5070 0px, #1e5070 14px,
+      #173d58 14px, #173d58 16px,
+      #1e5070 16px
+    );
+  border-top: 2px solid #2a7aaa;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2;
+}
+
+.elevator-door-left  { left: 0;   border-right: 1px solid #0a1820; }
+.elevator-door-right { right: 0;  border-left:  1px solid #0a1820; }
+
+/* Open state — panels slide outward */
+.lab-elevator--open .elevator-door-left  { transform: translateX(-100%); }
+.lab-elevator--open .elevator-door-right { transform: translateX(100%); }
+
+/* Closing state — panels slide back to center (mirrors default, handled by removing --open) */
+.lab-elevator--closing .elevator-door-left  { transform: translateX(0); }
+.lab-elevator--closing .elevator-door-right { transform: translateX(0); }
+
+/* Floor direction button (▲ / ▼) */
+.elevator-floor-btn {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: rgba(70, 219, 255, 0.85);
+  text-shadow: 0 0 8px rgba(70, 219, 255, 0.8);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* "SPACE to ride" hint */
+.elevator-hint {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-yellow);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  z-index: 10;
+}
+
+/* ── FLOOR 2 INDICATOR SIGN ───────────────────────────────────────────────── */
+.lab-floor-indicator {
+  position: absolute;
+  left: 5%;
+  top: 30%;
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(70, 219, 255, 0.5);
+  border-radius: 4px;
+  background: rgba(10, 30, 45, 0.85);
+  color: rgba(70, 219, 255, 0.9);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 0 8px rgba(70, 219, 255, 0.7);
+  box-shadow: 0 0 10px rgba(70, 219, 255, 0.15);
+  pointer-events: none;
+  z-index: 4;
+  content: "2";
+}
+.lab-floor-indicator::before { content: "2"; }
+
+/* ── ELEVATOR SCENE SCROLL ANIMATIONS ────────────────────────────────────── */
+@keyframes lab-elevator-scroll-up {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(-100%); }
+}
+
+@keyframes lab-elevator-scroll-down {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(100%); }
+}
+
+.lab-elevator-scroll-up {
+  animation: lab-elevator-scroll-up 800ms linear forwards;
+}
+
+.lab-elevator-scroll-down {
+  animation: lab-elevator-scroll-down 800ms linear forwards;
+}
+
+/* ── LAB SUB-ROOM BACKGROUNDS ─────────────────────────────────────────────── */
+.room-bg.room-lab-science {
+  background:
+    radial-gradient(ellipse at 50% 80%, rgba(80, 220, 140, 0.12) 0%, transparent 55%),
+    linear-gradient(180deg, #091a10 0%, #0e2a18 35%, #102e1c 65%, #0c2415 85%, #122a1a 100%);
+}
+
+.room-bg.room-lab-mix {
+  background:
+    radial-gradient(ellipse at 40% 70%, rgba(120, 80, 220, 0.15) 0%, transparent 55%),
+    linear-gradient(180deg, #10091a 0%, #1a0e2e 35%, #1e1038 65%, #160c2a 85%, #1c1232 100%);
+}
+
+.room-bg.room-lab-breeding {
+  background:
+    radial-gradient(ellipse at 55% 75%, rgba(230, 80, 140, 0.14) 0%, transparent 55%),
+    linear-gradient(180deg, #1a0912 0%, #2e0e1e 35%, #38102a 65%, #2a0c20 85%, #321228 100%);
+}
+
+.room-bg.room-lab-potions {
+  background:
+    radial-gradient(ellipse at 45% 70%, rgba(150, 60, 220, 0.15) 0%, transparent 55%),
+    linear-gradient(180deg, #12091a 0%, #200e2e 35%, #261038 65%, #1c0c2a 85%, #221232 100%);
+}
+
+.room-bg.room-lab-enhancement {
+  background:
+    radial-gradient(ellipse at 50% 75%, rgba(255, 180, 40, 0.14) 0%, transparent 55%),
+    linear-gradient(180deg, #1a1400 0%, #2e2200 35%, #382a00 65%, #2a1e00 85%, #322800 100%);
+}
+
+/* ── DOOR COLOUR VARIANTS (purple, pink) ─────────────────────────────────── */
+.room-door--purple::before {
+  filter: hue-rotate(200deg) saturate(1.4) brightness(0.95);
+}
+.room-door--purple .door-symbol  { filter: sepia(1) saturate(2.0) brightness(0.46) hue-rotate(210deg); }
+.room-door--purple .door-engraving {
+  color: #2a0a50;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.45), -1px -1px 0 rgba(160,80,255,0.18), 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.room-door--pink::before {
+  filter: hue-rotate(300deg) saturate(1.6) brightness(1.05);
+}
+.room-door--pink .door-symbol  { filter: sepia(1) saturate(2.2) brightness(0.48) hue-rotate(305deg); }
+.room-door--pink .door-engraving {
+  color: #500a2a;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.45), -1px -1px 0 rgba(255,80,160,0.18), 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* ── LAB SUB-ROOM STUB PLACEHOLDER ───────────────────────────────────────── */
+.lab-stub-prop {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  transform: translate(-50%, -50%);
+  font-size: 5rem;
+  opacity: 0.3;
+  pointer-events: none;
+  user-select: none;
+}
+
+
   background:
     radial-gradient(ellipse at 50% 116%, rgba(36, 21, 6, 0.55) 0%, rgba(36, 21, 6, 0) 45%),
     radial-gradient(ellipse at 18% 26%, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 40%),
