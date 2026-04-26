@@ -271,6 +271,12 @@
       elev.appendChild(panelR);
       elev.appendChild(btn);
       elev.appendChild(hint);
+
+      elev.addEventListener('pointerdown', e => {
+        e.stopPropagation();
+        if (!labElevatorScrolling) rideElevator();
+      });
+
       roomPropsEl.appendChild(elev);
       labElevatorEl = elev;
 
