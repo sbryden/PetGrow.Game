@@ -114,8 +114,6 @@
 
   // ── Room switching ────────────────────────────────────────
   function enterDoor(door) {
-    if (enteringRoom) return;
-    enteringRoom = true;
     doSwitchRoom(door.roomId);
   }
 

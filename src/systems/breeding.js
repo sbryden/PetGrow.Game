@@ -48,8 +48,10 @@ export function mixIngredients(parentA, parentB) {
  * excluding parent jobs so job diversity increases over generations.
  */
 export function pickOffspringJobPool(parentJobIds, allJobs) {
-  return allJobs
-    .filter(j => !parentJobIds.includes(j.id))
-    .sort(() => Math.random() - 0.5)
-    .slice(0, 3);
+  const available = allJobs.filter(j => !parentJobIds.includes(j.id));
+  for (let i = available.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [available[i], available[j]] = [available[j], available[i]];
+  }
+  return available.slice(0, 3);
 }

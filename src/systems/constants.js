@@ -17,6 +17,7 @@ export const DECAY_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 export const NEED_MAX = 100;
 export const NEED_DECAY_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 export const NEED_DECAY_AMOUNT = 8;
+export const NEED_MAX_MISSED_TICKS = 20; // cap catch-up decay at 20 missed ticks
 export const NEED_ACTION_RESTORE = 25;
 export const NEED_WARN_THRESHOLD = 30;
 export const NEED_CRITICAL_THRESHOLD = 15;

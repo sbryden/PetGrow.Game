@@ -8,6 +8,7 @@ import {
   NEED_DECAY_INTERVAL_MS,
   NEED_ACTION_RESTORE,
   NEED_CRITICAL_THRESHOLD,
+  NEED_MAX_MISSED_TICKS,
 } from './constants.js';
 
 // ---------- Helpers ----------
@@ -23,9 +24,9 @@ export function getClickValue(needs) {
   return 1;
 }
 
-/** Apply one tick of need decay, capped at NEED_MAX missed ticks. */
+/** Apply one tick of need decay, capped at NEED_MAX_MISSED_TICKS. */
 export function applyNeedDecay(needs, missedTicks = 1) {
-  const capped = Math.min(missedTicks, 20);
+  const capped = Math.min(missedTicks, NEED_MAX_MISSED_TICKS);
   return {
     hunger:      clampNeed(needs.hunger      - NEED_DECAY_AMOUNT * capped),
     cleanliness: clampNeed(needs.cleanliness - NEED_DECAY_AMOUNT * capped),

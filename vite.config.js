@@ -6,6 +6,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 function localApiPlugin() {
   return {
     name: 'local-api',
+    apply: 'serve',
     config(_, { mode }) {
       // Load all env vars (including non-VITE_ ones) into process.env for the dev server
       const env = loadEnv(mode, process.cwd(), '');
@@ -24,10 +25,18 @@ function localApiPlugin() {
         const bodyText = Buffer.concat(chunks).toString();
 
         // Build a minimal req/res shim for the Vercel handler
+        let parsedBody = {};
+        try {
+          parsedBody = bodyText ? JSON.parse(bodyText) : {};
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+          return;
+        }
         const shimReq = {
           method: req.method,
           headers: req.headers,
-          body: bodyText ? JSON.parse(bodyText) : {},
+          body: parsedBody,
         };
         const shimRes = {
           _status: 200,

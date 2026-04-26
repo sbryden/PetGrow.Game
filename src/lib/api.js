@@ -126,8 +126,7 @@ export function removeBackground(dataUrl, tolerance = 60) {
         const y = queue[head++];
         const pi = (y * w + x) * 4;
         const dr = d[pi] - bgR, dg = d[pi + 1] - bgG, db = d[pi + 2] - bgB;
-        const dist = Math.sqrt(dr * dr + dg * dg + db * db);
-        if (dist > tolerance) continue;
+        if (dr * dr + dg * dg + db * db > tolerance * tolerance) continue;
 
         d[pi + 3] = 0; // make transparent
 
