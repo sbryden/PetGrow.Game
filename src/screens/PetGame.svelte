@@ -64,6 +64,8 @@
   let lastTick       = 0;
   let needTimer;
   let _cleanup;
+  let sadMessage     = '';
+  let sadTimer;
 
   // ── Helpers ───────────────────────────────────────────────
   function getPetSize() { return window.innerWidth <= 480 ? PET_SIZE_SMALL : PET_SIZE; }
@@ -436,6 +438,7 @@
   // ── Actions ───────────────────────────────────────────────
   function doAction(type) {
     play(type);
+    let tooSad = false;
     gameStore.update(s => {
       let result;
       if (type === 'feed')  result = doFeed(s.needs, s.clicks);
@@ -443,11 +446,17 @@
       if (type === 'play')  result = doPlay(s.needs, s.clicks);
       if (type === 'sleep') result = doSleep(s.needs, s.clicks);
       if (!result) return s;
+      tooSad = result.tooSad;
       let newLevel = s.level;
       if (s.level === 'Baby'     && result.clicks >= TEEN_THRESHOLD)   newLevel = 'Teenager';
       if (s.level === 'Teenager' && result.clicks >= LEGEND_THRESHOLD) newLevel = 'Legendary Adult';
       return { ...s, needs: result.needs, clicks: result.clicks, level: newLevel };
     });
+    if (tooSad) {
+      sadMessage = '😢 Too sad to respond!';
+      clearTimeout(sadTimer);
+      sadTimer = setTimeout(() => { sadMessage = ''; }, 2000);
+    }
   }
 
   function openGallery()  { goTo('gallery'); }
@@ -563,6 +572,9 @@
         <img class="pet-part-img" src={petImage} alt={petName} />
       </div>
     </div>
+    {#if sadMessage}
+      <div class="sad-toast">{sadMessage}</div>
+    {/if}
   </div>
 
   <!-- Action buttons (room-specific) -->
@@ -720,6 +732,29 @@
   @keyframes pet-walk {
     0%, 100% { transform: translateY(0px); }
     50%       { transform: translateY(-4px); }
+  }
+
+  /* ── Sad toast ───────────────────────────────────────────── */
+  .sad-toast {
+    position: absolute;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 10, 30, 0.88);
+    color: #ff88aa;
+    font-size: 0.75rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid #ff4488;
+    pointer-events: none;
+    z-index: 50;
+    animation: sad-fade 2s ease forwards;
+  }
+
+  @keyframes sad-fade {
+    0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    70%  { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
   }
 
   /* ── Action bar ──────────────────────────────────────────── */

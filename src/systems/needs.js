@@ -53,7 +53,7 @@ export function doFeed(needs, clicks) {
   let newClicks = clicks;
   if (cv >= 1) newClicks += 1;
   else if (cv > 0 && Math.random() < cv) newClicks += 1;
-  return { needs: newNeeds, clicks: newClicks, tooSad: cv <= 0 };
+  return { needs: newNeeds, clicks: newClicks, tooSad: cv < 1 };
 }
 
 export function doClean(needs, clicks) {
@@ -66,7 +66,7 @@ export function doClean(needs, clicks) {
   let newClicks = clicks;
   if (cv >= 1) newClicks += 1;
   else if (cv > 0 && Math.random() < cv) newClicks += 1;
-  return { needs: newNeeds, clicks: newClicks, tooSad: cv <= 0 };
+  return { needs: newNeeds, clicks: newClicks, tooSad: cv < 1 };
 }
 
 export function doPlay(needs, clicks) {
@@ -79,7 +79,7 @@ export function doPlay(needs, clicks) {
   let newClicks = clicks;
   if (cv >= 1) newClicks += 1;
   else if (cv > 0 && Math.random() < cv) newClicks += 1;
-  return { needs: newNeeds, clicks: newClicks, tooSad: cv <= 0 };
+  return { needs: newNeeds, clicks: newClicks, tooSad: cv < 1 };
 }
 
 export function doSleep(needs, clicks) {
@@ -92,5 +92,5 @@ export function doSleep(needs, clicks) {
   let newClicks = clicks;
   if (cv >= 1) newClicks += 1;
   else if (cv > 0 && Math.random() < cv) newClicks += 1;
-  return { needs: newNeeds, clicks: newClicks, tooSad: cv <= 0 };
+  return { needs: newNeeds, clicks: newClicks, tooSad: cv < 1 };
 }
