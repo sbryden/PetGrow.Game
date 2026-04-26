@@ -56,6 +56,10 @@
   let labElevatorScrolling = false;
   const ELEV_X_PERCENT = 88; // elevator right-side position in lab
   const keys           = { a: false, d: false };
+  let isJumping        = false;
+  let jumpVY           = 0;
+  const JUMP_FORCE     = -520; // px/s (upward)
+  const GRAVITY        = 1400; // px/s²
   let rafId;
   let lastTick       = 0;
   let needTimer;
@@ -116,6 +120,8 @@
   }
 
   function doSwitchRoom(roomId) {
+    if (enteringRoom) return;
+    enteringRoom = true;
     play('room');
     // Save return X when leaving platform
     if (state?.currentRoom === PLATFORM_ROOM_ID && roomId !== PLATFORM_ROOM_ID) {
@@ -336,7 +342,9 @@
       if (petPartsEl) petPartsEl.style.opacity = '0';
 
       // 3. Scroll scene 100% vertically (800 ms linear)
-      const scrollClass = goingUp ? 'lab-scroll-up' : 'lab-scroll-down';
+      // Going up: current floor slides DOWN out of view (translateY +100%)
+      // Going down: current floor slides UP out of view (translateY -100%)
+      const scrollClass = goingUp ? 'lab-scroll-down' : 'lab-scroll-up';
       sceneRootEl.classList.add(scrollClass);
 
       setTimeout(() => {
@@ -392,7 +400,19 @@
         isWalking = false;
       }
 
-      petY = getFloorY();
+      const floorY = getFloorY();
+      if (isJumping) {
+        jumpVY += GRAVITY * dt;
+        petY   += jumpVY * dt;
+        if (petY >= floorY) {
+          petY      = floorY;
+          isJumping = false;
+          jumpVY    = 0;
+        }
+      } else {
+        petY = floorY;
+      }
+      if (petPartsEl) petPartsEl.classList.toggle('jumping', isJumping);
       applyPetTransform();
       checkDoors();
       if (state?.currentRoom === 'lab') checkElevator();
@@ -463,8 +483,10 @@
       if (k === 'a' || e.key === 'ArrowLeft')  { keys.a = true; e.preventDefault(); }
       if (k === 'd' || e.key === 'ArrowRight') { keys.d = true; e.preventDefault(); }
       if (e.code === 'Space' && !enteringRoom) {
-        if (nearDoor) { e.preventDefault(); enterDoor(nearDoor); }
-        else if (nearElevator && !labElevatorScrolling) { e.preventDefault(); rideElevator(); }
+        e.preventDefault();
+        if (nearDoor) { enterDoor(nearDoor); }
+        else if (nearElevator && !labElevatorScrolling) { rideElevator(); }
+        else if (!isJumping) { isJumping = true; jumpVY = JUMP_FORCE; }
       }
     };
     const onKeyUp = e => {
@@ -679,6 +701,12 @@
 
   :global(.pet-parts.walking) .pet-part-img {
     animation: pet-walk 0.45s ease-in-out infinite;
+  }
+
+  :global(.pet-parts.jumping) .pet-part-img {
+    animation: none;
+    transform: rotate(-8deg);
+    filter: drop-shadow(0 8px 28px rgba(0, 210, 255, 0.55));
   }
 
   @keyframes pet-idle {
