@@ -3,24 +3,12 @@
   import { gameStore } from '../stores/gameStore.js';
   import { currentScreen, goTo } from '../stores/uiStore.js';
   import { play } from '../lib/audio.js';
-  import { CREATURE_NAMES } from '../systems/constants.js';
+  import { CREATURE_NAMES, INGREDIENT_OPTIONS, INGREDIENT_EMOJIS } from '../systems/constants.js';
   import { loadAll, saveCreature } from '../lib/db.js';
   import BackendStatus from '../components/BackendStatus.svelte';
 
-  // ── Ingredient options ────────────────────────────────────
-  const OPTIONS = {
-    animal:   ['Cat', 'Frog', 'Dragon', 'Bunny', 'Bear', 'Fox', 'Wolf', 'Bird', 'Fish', 'Slime'],
-    color:    ['Galaxy Purple', 'Slime Green', 'Cotton Candy Pink', 'Ocean Blue', 'Lava Orange', 'Arctic White', 'Shadow Black', 'Golden Yellow', 'Rose Red', 'Mint Teal'],
-    wildcard: ['Top Hat', 'Wings', 'Horns', 'Tail', 'Mask', 'Cape', 'Spots', 'Stripes', 'Glow', 'Crystals'],
-    element:  ['Fire', 'Ice', 'Lightning', 'Nature', 'Water', 'Dark', 'Light', 'Earth', 'Wind', 'Void'],
-  };
-
-  const EMOJIS = {
-    animal: { Cat: '😺', Frog: '🐸', Dragon: '🐉', Bunny: '🐰', Bear: '🐻', Fox: '🦊', Wolf: '🐺', Bird: '🐦', Fish: '🐟', Slime: '🫧' },
-    color:  { 'Galaxy Purple': '🟣', 'Slime Green': '🟢', 'Cotton Candy Pink': '🩷', 'Ocean Blue': '🔵', 'Lava Orange': '🟠', 'Arctic White': '⬜', 'Shadow Black': '⬛', 'Golden Yellow': '🟡', 'Rose Red': '🔴', 'Mint Teal': '🩵' },
-    wildcard: { 'Top Hat': '🎩', Wings: '🪽', Horns: '📯', Tail: '🦕', Mask: '🎭', Cape: '🧣', Spots: '🔵', Stripes: '🦓', Glow: '✨', Crystals: '💎' },
-    element: { Fire: '🔥', Ice: '❄️', Lightning: '⚡', Nature: '🌿', Water: '💧', Dark: '🌑', Light: '☀️', Earth: '🪨', Wind: '🌬️', Void: '🌀' },
-  };
+  const OPTIONS = INGREDIENT_OPTIONS;
+  const EMOJIS = INGREDIENT_EMOJIS;
 
   function optionLabel(category, opt) {
     const emoji = EMOJIS[category]?.[opt];

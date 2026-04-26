@@ -73,6 +73,20 @@ export const ROOMS = [
   { id: 'breeding',       name: 'Breeding Room', emoji: '🥚', actions: ['breed'] },
 ];
 
+export const INGREDIENT_OPTIONS = {
+  animal:   ['Cat', 'Frog', 'Dragon', 'Bunny', 'Bear', 'Fox', 'Wolf', 'Bird', 'Fish', 'Slime'],
+  color:    ['Galaxy Purple', 'Slime Green', 'Cotton Candy Pink', 'Ocean Blue', 'Lava Orange', 'Arctic White', 'Shadow Black', 'Golden Yellow', 'Rose Red', 'Mint Teal'],
+  wildcard: ['Top Hat', 'Wings', 'Horns', 'Tail', 'Mask', 'Cape', 'Spots', 'Stripes', 'Glow', 'Crystals', 'Crown', 'Antennae', 'Feathers', 'Tentacles', 'Claws', 'Shell', 'Spikes', 'Halo', 'Vines', 'Goggles'],
+  element:  ['Fire', 'Ice', 'Lightning', 'Nature', 'Water', 'Dark', 'Light', 'Earth', 'Wind', 'Void'],
+};
+
+export const INGREDIENT_EMOJIS = {
+  animal:   { Cat: '😺', Frog: '🐸', Dragon: '🐉', Bunny: '🐰', Bear: '🐻', Fox: '🦊', Wolf: '🐺', Bird: '🐦', Fish: '🐟', Slime: '🫧' },
+  color:    { 'Galaxy Purple': '🟣', 'Slime Green': '🟢', 'Cotton Candy Pink': '🩷', 'Ocean Blue': '🔵', 'Lava Orange': '🟠', 'Arctic White': '⬜', 'Shadow Black': '⬛', 'Golden Yellow': '🟡', 'Rose Red': '🔴', 'Mint Teal': '🩵' },
+  wildcard: { 'Top Hat': '🎩', Wings: '🪽', Horns: '📯', Tail: '🦕', Mask: '🎭', Cape: '🧣', Spots: '🔵', Stripes: '🦓', Glow: '✨', Crystals: '💎', Crown: '👑', Antennae: '📡', Feathers: '🪶', Tentacles: '🦑', Claws: '🐾', Shell: '🐚', Spikes: '⚡', Halo: '😇', Vines: '🌿', Goggles: '🥽' },
+  element:  { Fire: '🔥', Ice: '❄️', Lightning: '⚡', Nature: '🌿', Water: '💧', Dark: '🌑', Light: '☀️', Earth: '🪨', Wind: '🌬️', Void: '🌀' },
+};
+
 export const RARITY_LEVELS = [
   { name: 'Common',   cls: 'common',   min: 1 },
   { name: 'Uncommon', cls: 'uncommon', min: 2 },

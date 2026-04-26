@@ -3,12 +3,7 @@
 //  Pure JS — no Svelte imports.
 // ============================================================
 
-const INGREDIENT_OPTIONS = {
-  animal:   ['Cat', 'Frog', 'Dragon', 'Bunny', 'Bear', 'Fox', 'Wolf', 'Bird', 'Fish', 'Slime'],
-  color:    ['Galaxy Purple', 'Slime Green', 'Cotton Candy Pink', 'Ocean Blue', 'Lava Orange', 'Arctic White', 'Shadow Black', 'Golden Yellow', 'Rose Red', 'Mint Teal'],
-  wildcard: ['Top Hat', 'Wings', 'Horns', 'Tail', 'Mask', 'Cape', 'Spots', 'Stripes', 'Glow', 'Crystals'],
-  element:  ['Fire', 'Ice', 'Lightning', 'Nature', 'Water', 'Dark', 'Light', 'Earth', 'Wind', 'Void'],
-};
+import { INGREDIENT_OPTIONS } from './constants.js';
 
 /**
  * Mix two parents' ingredients to produce offspring ingredients.
