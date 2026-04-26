@@ -1,10 +1,14 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
-  import { PING_URL } from '../systems/constants.js';
+  import { PING_URL } from '$systems/constants.js';
 
   /** 'checking' | 'online' | 'offline' */
-  let status = 'checking';
-  let interval;
+  let status = $state('checking');
+
+  let title = $derived(
+    status === 'online'  ? 'Backend: online'  :
+    status === 'offline' ? 'Backend: offline' :
+    'Backend: checking…'
+  );
 
   async function check() {
     try {
@@ -15,16 +19,11 @@
     }
   }
 
-  onMount(() => {
+  $effect(() => {
     check();
-    interval = setInterval(check, 10_000);
+    const interval = setInterval(check, 10_000);
+    return () => clearInterval(interval);
   });
-
-  onDestroy(() => clearInterval(interval));
-
-  $: title = status === 'online'   ? 'Backend: online'
-           : status === 'offline'  ? 'Backend: offline'
-           : 'Backend: checking…';
 </script>
 
 <span class="dot {status}" {title}></span>

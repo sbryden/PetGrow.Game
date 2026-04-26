@@ -19,6 +19,8 @@
     "workbox-window": "^7.4.0"
   },
   "dependencies": {
+    "@sveltejs/adapter-vercel": "^6.3.3",
+    "@sveltejs/kit": "^2.58.0",
     "svelte": "^5.55.5"
   }
 }
