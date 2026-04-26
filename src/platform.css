@@ -336,3 +336,141 @@
   55%  { opacity: 0; }
   100% { opacity: 1; }
 }
+
+/* ── LAB FLOOR-2 BG TINT ───────────────────────────────── */
+.room-bg.room-lab.lab-floor-2 {
+  background:
+    linear-gradient(180deg, #0d1a14 0%, #0d1a14 7%, transparent 7%),
+    radial-gradient(ellipse 60% 42% at 18% 22%, rgba(70,255,190,0.14) 0%, transparent 100%),
+    radial-gradient(ellipse 60% 42% at 82% 22%, rgba(70,255,190,0.14) 0%, transparent 100%),
+    repeating-linear-gradient(
+      180deg,
+      #0f2a1e 0px, #0f2a1e 26px,
+      #143d2c 26px, #143d2c 28px,
+      #0d2218 28px, #0d2218 54px,
+      #17482e 54px, #17482e 56px,
+      #0f2a1e 56px
+    );
+}
+
+/* ── ELEVATOR ───────────────────────────────────────────── */
+.lab-elevator {
+  position: absolute;
+  z-index: 7;
+  overflow: hidden;
+  border: 3px solid #1a4a6a;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: #0c2030;
+  box-shadow:
+    0 0 0 1px rgba(70,219,255,0.25),
+    inset 0 0 20px rgba(0,0,0,0.6);
+}
+
+/* Two door panels — center-split, start closed */
+.elevator-door-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #1e5070 0px, #1e5070 14px,
+      #173d58 14px, #173d58 16px,
+      #1e5070 16px
+    );
+  border-top: 2px solid #2a7aaa;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 2;
+}
+.elevator-door-left  { left: 0;  border-right: 1px solid #0a1820; }
+.elevator-door-right { right: 0; border-left:  1px solid #0a1820; }
+
+/* Open: panels slide outward */
+.lab-elevator--open .elevator-door-left  { transform: translateX(-100%); }
+.lab-elevator--open .elevator-door-right { transform: translateX(100%); }
+
+/* Floor ▲ / ▼ button */
+.elevator-floor-btn {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.75rem;
+  color: rgba(70,219,255,0.85);
+  text-shadow: 0 0 8px rgba(70,219,255,0.8);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* "SPACE to ride" hint */
+.elevator-hint {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #ffd700;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  z-index: 10;
+}
+
+/* ── FLOOR 2 INDICATOR SIGN ─────────────────────────────── */
+.lab-floor-indicator {
+  position: absolute;
+  left: 5%;
+  top: 30%;
+  width: 32px;
+  height: 32px;
+  border: 2px solid rgba(70,219,255,0.5);
+  border-radius: 4px;
+  background: rgba(10,30,45,0.85);
+  color: rgba(70,219,255,0.9);
+  font-size: 1rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-shadow: 0 0 8px rgba(70,219,255,0.7);
+  box-shadow: 0 0 10px rgba(70,219,255,0.15);
+  pointer-events: none;
+  z-index: 4;
+}
+.lab-floor-indicator::before { content: "2"; }
+
+/* ── ELEVATOR SCENE SCROLL ANIMATIONS ──────────────────────── */
+@keyframes lab-scroll-up {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(-100%); }
+}
+
+@keyframes lab-scroll-down {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(100%); }
+}
+
+.lab-scroll-up {
+  animation: lab-scroll-up 800ms linear forwards;
+}
+
+.lab-scroll-down {
+  animation: lab-scroll-down 800ms linear forwards;
+}
+
+/* ── LAB SUB-ROOM STUB PLACEHOLDER ──────────────────────────── */
+.lab-stub-prop {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  transform: translate(-50%, -50%);
+  font-size: 5rem;
+  opacity: 0.3;
+  pointer-events: none;
+  user-select: none;
+}
