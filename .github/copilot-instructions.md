@@ -95,6 +95,18 @@ $components → src/components/
 - IndexedDB schema in `db.js`.
 - The Gemini prompt format in `prompts.js`.
 
+## Launch / Dev Server
+- **Local dev: `npm run dev`** (plain `vite`) — runs on `http://localhost:5173`. This is the standard way to run the app locally.
+- **Do NOT use `vercel dev`** — it adds no value here and tends to interfere with port/env behavior.
+- Env vars for dev live in `.env.local` (gitignored). Required: `GEMINI_API_KEY`.
+- **Server-side env access must use `$env/dynamic/private`** (or `$env/static/private`), NOT `process.env`. Vite/SvelteKit only loads `.env.local` into the `$env/*` virtual modules in dev — `process.env.GEMINI_API_KEY` will be undefined and `/api/generate` will return 500 "API key not configured".
+- The user typically already has a dev server running. Before starting one, check existing terminals / `lsof -i :5173` rather than spawning another.
+- To verify the API proxy from the CLI:
+  ```bash
+  curl -s -X POST http://localhost:5173/api/generate -H "Content-Type: application/json" \
+    -d '{"model":"gemini-2.5-flash-image","contents":[{"parts":[{"text":"test"}]}],"generationConfig":{"responseModalities":["TEXT","IMAGE"],"imageConfig":{"aspectRatio":"1:1"}}}'
+  ```
+
 ## Testing
 ```bash
 npm test          # Vitest unit tests

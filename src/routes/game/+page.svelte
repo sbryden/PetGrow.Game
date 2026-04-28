@@ -14,6 +14,42 @@
   const PET_SIZE_SMALL = 150;
   const DOOR_SLOTS     = [32, 68]; // % X positions of platform-room doors
   const DOOR_RADIUS    = 110;      // px proximity to open a door
+  const PICKUP_RADIUS  = 90;       // px proximity to pickup a loose item
+  const INTERACT_RADIUS = 110;     // px proximity to interact with a station
+
+  // ── Food / pickup catalog ────────────────────────────────
+  const FOOD_ITEMS = [
+    { id: 'meat',   emoji: '🍖', name: 'Meat',   xPercent: 22 },
+    { id: 'apple',  emoji: '🍎', name: 'Apple',  xPercent: 42 },
+    { id: 'cake',   emoji: '🍰', name: 'Cake',   xPercent: 62 },
+    { id: 'muffin', emoji: '🧁', name: 'Muffin', xPercent: 78 },
+  ];
+
+  // ── Mix recipes (key = sorted ids joined by '+') ─────────
+  const MIX_RECIPES = {
+    'apple+meat':   { emoji: '🥗', name: "Carnivore's Remorse", quip: "A carnivore's nightmare." },
+    'cake+meat':    { emoji: '🎂', name: 'Meat Cake',          quip: 'No one asked for this.' },
+    'meat+muffin':  { emoji: '💪', name: 'Protein Puff',       quip: 'Gains incoming.' },
+    'apple+cake':   { emoji: '🥧', name: 'Apple Tart',         quip: 'Suspiciously fancy.' },
+    'apple+muffin': { emoji: '🍇', name: 'Cram-Berry',         quip: 'Fruit overload.' },
+    'cake+muffin':  { emoji: '🏔️', name: 'Mega Muffin',        quip: 'Too much of a good thing.' },
+  };
+  const INSPECT_TEXTS = {
+    meat:   'Protein density: extreme. Smells… powerful.',
+    apple:  'Suspiciously round. 99% apple, 1% mystery.',
+    cake:   'Structural integrity: collapsing. Delicious.',
+    muffin: 'Sprinkle-to-muffin ratio: chaotic.',
+  };
+  const INSPECT_DEFAULT = 'Unknown substance. Handle with extreme curiosity.';
+
+  function recipeFor(a, b) {
+    if (!a || !b) return null;
+    if (a.id === b.id) {
+      return { emoji: '💥', name: `Double ${a.name}`, quip: 'Twice the chaos.' };
+    }
+    const key = [a.id, b.id].sort().join('+');
+    return MIX_RECIPES[key] || { emoji: '✨', name: 'Strange Brew', quip: 'Science cannot explain this.' };
+  }
 
   // ── Derived UI values (replaces $: reactive statements) ───
   let petImage     = $derived(gameStore.data.cachedImages?.[gameStore.data.level] ?? gameStore.data.cachedImages?.raw ?? TRANSPARENT_PIXEL);
@@ -27,10 +63,18 @@
   let job          = $derived(gameStore.data.job);
   let labFloor     = $derived(gameStore.data.labFloor ?? 1);
   let roomBgClass  = $derived(`room-bg room-${currentRoomId}${currentRoomId === 'lab' && labFloor === 2 ? ' lab-floor-2' : ''}`);
+  let heldItem     = $derived(gameStore.data.heldItem ?? null);
+  let mixSlots     = $derived(gameStore.data.mixSlots ?? [null, null]);
+  let journal      = $derived(gameStore.data.journal ?? []);
 
   // ── Local reactive state ───────────────────────────────────
-  let audioOn  = $state(isEnabled());
-  let sadMessage = $state('');
+  let audioOn       = $state(isEnabled());
+  let sadMessage    = $state('');
+  let inspectOpen   = $state(false);
+  let inspectText   = $state('');
+  let mixResultMsg  = $state(null); // { emoji, name, quip } | null
+  let mixerReady    = $state(false); // both slots filled, awaiting button press
+  let journalOpen   = $state(false);
 
   // ── DOM refs ──────────────────────────────────────────────
   let petGameEl;
@@ -52,6 +96,11 @@
   let nearElevator     = false;
   let labElevatorEl    = null;
   let labElevatorScrolling = false;
+  let pickupItems      = [];   // [{ el, xPercent, item }] — loose pickupable items in current room
+  let nearPickup       = null; // nearest pickup ref or null
+  let scienceProps     = [];   // [{ el, xPercent, type }] — interactable science stations
+  let nearStation      = null; // nearest science station ref or null
+  let mixResultTimer   = null;
   const ELEV_X_PERCENT = 88; // elevator right-side position in lab
   const keys           = { a: false, d: false };
   let isJumping        = false;
@@ -75,6 +124,7 @@
     petPartsEl.style.top       = `${petY}px`;
     petPartsEl.style.transform = petFacingLeft ? 'scaleX(-1)' : 'scaleX(1)';
     petPartsEl.classList.toggle('walking', isWalking);
+    petPartsEl.classList.toggle('facing-left', petFacingLeft);
   }
 
   function initPetPosition() {
@@ -146,7 +196,11 @@
     if (!roomPropsEl || !gameWorldEl) return;
     roomPropsEl.innerHTML = '';
     platformDoors = [];
-    nearDoor = null;
+    pickupItems   = [];
+    scienceProps  = [];
+    nearDoor      = null;
+    nearPickup    = null;
+    nearStation   = null;
 
     const addFloor = () => {
       const el = document.createElement('div');
@@ -279,11 +333,17 @@
       roomPropsEl.appendChild(elev);
       labElevatorEl = elev;
 
-    } else if (['lab-science','lab-mix','lab-breeding','lab-potions','lab-enhancement'].includes(roomId)) {
+    } else if (roomId === 'lab-science') {
+      addFloor();
+      addLights();
+      buildScienceRoom();
+      addDoor(5, 'lab', 'exit', null, null);
+      addDroppedItems(roomId);
+
+    } else if (['lab-mix','lab-breeding','lab-potions','lab-enhancement'].includes(roomId)) {
       addFloor();
       addLights();
       const LAB_SUB_ICONS = {
-        'lab-science':     '🔬',
         'lab-mix':         '🧬',
         'lab-breeding':    '💕',
         'lab-potions':     '⚗️',
@@ -294,12 +354,356 @@
       stub.textContent = LAB_SUB_ICONS[roomId] || '🧪';
       roomPropsEl.appendChild(stub);
       addDoor(5, 'lab', 'exit', null, null);
+      addDroppedItems(roomId);
 
-    } else {
-      // feeding, bathroom, playroom, bedroom, breeding
+    } else if (roomId === 'feeding') {
       addFloor();
       addDoor(5, PLATFORM_ROOM_ID, 'exit', null, null);
+      addFoodPickups();
+      addDroppedItems(roomId);
+
+    } else {
+      // bathroom, playroom, bedroom, breeding
+      addFloor();
+      addDoor(5, PLATFORM_ROOM_ID, 'exit', null, null);
+      addDroppedItems(roomId);
     }
+  }
+
+  // ── Pickup / dropped item DOM ─────────────────────────────
+  function addFoodPickups() {
+    const pickedIds = gameStore.data.feedingPickedIds || [];
+    FOOD_ITEMS.forEach(item => {
+      if (pickedIds.includes(item.id)) return;
+      addPickupProp(item, item.xPercent);
+    });
+  }
+
+  function addDroppedItems(roomId) {
+    const drops = gameStore.data.droppedItems?.[roomId] || [];
+    drops.forEach(d => addPickupProp(d, d.xPercent));
+  }
+
+  function addPickupProp(item, xPercent) {
+    const el = document.createElement('div');
+    el.className   = 'pickup-prop';
+    el.style.left   = `${xPercent}%`;
+    el.style.bottom = '23%';
+    el.innerHTML = `
+      <span class="pickup-emoji">${item.emoji}</span>
+      <span class="pickup-label">${item.name}</span>
+    `;
+    el.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      doPickup({ item, xPercent });
+    });
+    roomPropsEl.appendChild(el);
+    pickupItems.push({ el, xPercent, item });
+  }
+
+  // ── Science room props ────────────────────────────────────
+  function buildScienceRoom() {
+    // TV / monitor (top-left)
+    const tv = document.createElement('div');
+    tv.className = 'sci-tv';
+    const screen = document.createElement('div');
+    screen.className = 'sci-tv-screen';
+    const bubbleHues = [140, 180, 90, 200, 50, 280, 320, 20];
+    for (let i = 0; i < 12; i++) {
+      const b = document.createElement('div');
+      b.className = 'sci-bubble';
+      b.style.left = `${5 + (i * 47) % 90}%`;
+      const dur = 5 + (i % 5) * 1.2; // 5s..10.8s
+      b.style.animationDuration = `${dur.toFixed(2)}s`;
+      b.style.animationDelay = `${((i * 0.7) % dur).toFixed(2)}s`;
+      const size = 5 + (i % 6) * 3; // 5..20px
+      b.style.width = b.style.height = `${size}px`;
+      const hue = bubbleHues[i % bubbleHues.length];
+      b.style.background = `radial-gradient(circle at 30% 30%, hsla(${hue},100%,90%,0.95) 0%, hsla(${hue},80%,60%,0.5) 60%, hsla(${hue},80%,60%,0) 100%)`;
+      b.style.boxShadow = `0 0 6px hsla(${hue},100%,75%,0.6)`;
+      screen.appendChild(b);
+    }
+    tv.appendChild(screen);
+    roomPropsEl.appendChild(tv);
+
+    // Fan (top-right)
+    const fan = document.createElement('div');
+    fan.className = 'sci-fan';
+    const blades = document.createElement('div');
+    blades.className = 'sci-fan-blades';
+    blades.innerHTML = '<span></span><span></span><span></span><span></span>';
+    fan.appendChild(blades);
+    const hub = document.createElement('div');
+    hub.className = 'sci-fan-hub';
+    fan.appendChild(hub);
+    roomPropsEl.appendChild(fan);
+
+    // Diagonal tubes from fan to mixer
+    const tubes = document.createElement('div');
+    tubes.className = 'sci-tubes';
+    roomPropsEl.appendChild(tubes);
+
+    // INSPECT table
+    const inspect = makeStation('inspect', 28, '🔬', 'INSPECT');
+    roomPropsEl.appendChild(inspect.el);
+    scienceProps.push(inspect);
+
+    // JOURNAL table
+    const journal = makeStation('journal', 50, '📓', 'JOURNAL');
+    roomPropsEl.appendChild(journal.el);
+    scienceProps.push(journal);
+
+    // ELEMENTAL MIX machine
+    const mixer = document.createElement('div');
+    mixer.className = 'sci-mixer';
+    mixer.style.left = '78%';
+    const slots = (gameStore.data.mixSlots || [null, null]);
+    mixer.innerHTML = `
+      <div class="sci-mixer-title">ELEMENTAL MIX</div>
+      <div class="sci-mixer-window"></div>
+      <div class="sci-mixer-slots">
+        <div class="sci-slot ${slots[0] ? 'sci-slot--filled' : ''}">${slots[0]?.emoji || '?'}</div>
+        <div class="sci-slot ${slots[1] ? 'sci-slot--filled' : ''}">${slots[1]?.emoji || '?'}</div>
+      </div>
+      <div class="sci-mixer-btn"></div>
+      <div class="sci-mixer-base"></div>
+    `;
+    mixer.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      interactWithStation({ el: mixer, xPercent: 78, type: 'mixer' });
+    });
+    roomPropsEl.appendChild(mixer);
+    scienceProps.push({ el: mixer, xPercent: 78, type: 'mixer' });
+  }
+
+  function makeStation(type, xPercent, icon, label) {
+    const el = document.createElement('div');
+    el.className = `sci-station sci-station--${type}`;
+    el.style.left = `${xPercent}%`;
+    el.innerHTML = `
+      <div class="sci-station-icon">${icon}</div>
+      <div class="sci-station-table"></div>
+      <div class="sci-station-label">${label}</div>
+    `;
+    const ref = { el, xPercent, type };
+    el.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      interactWithStation(ref);
+    });
+    return ref;
+  }
+
+  // ── Pickup / station proximity ────────────────────────────
+  function checkPickups() {
+    if (enteringRoom || petX === null || !gameWorldEl) return;
+    if (!pickupItems.length) {
+      if (nearPickup) { nearPickup.el.classList.remove('pickup-prop--near'); nearPickup = null; }
+      return;
+    }
+    const sz = getPetSize();
+    const petCx = petX + sz / 2;
+    const worldW = Math.max(1, gameWorldEl.clientWidth);
+    let found = null, bestDist = Infinity;
+    pickupItems.forEach(p => {
+      const px = (p.xPercent / 100) * worldW;
+      const dist = Math.abs(petCx - px);
+      if (dist < PICKUP_RADIUS && dist < bestDist) { bestDist = dist; found = p; }
+    });
+    if (found !== nearPickup) {
+      if (nearPickup) nearPickup.el.classList.remove('pickup-prop--near');
+      if (found) found.el.classList.add('pickup-prop--near');
+      nearPickup = found;
+    }
+  }
+
+  function checkStations() {
+    if (enteringRoom || petX === null || !gameWorldEl) return;
+    if (!scienceProps.length) {
+      if (nearStation) { nearStation.el.classList.remove('sci-station--near'); nearStation = null; }
+      return;
+    }
+    const sz = getPetSize();
+    const petCx = petX + sz / 2;
+    const worldW = Math.max(1, gameWorldEl.clientWidth);
+    let found = null, bestDist = Infinity;
+    scienceProps.forEach(s => {
+      const sx = (s.xPercent / 100) * worldW;
+      const dist = Math.abs(petCx - sx);
+      if (dist < INTERACT_RADIUS && dist < bestDist) { bestDist = dist; found = s; }
+    });
+    if (found !== nearStation) {
+      if (nearStation) nearStation.el.classList.remove('sci-station--near');
+      if (found) found.el.classList.add('sci-station--near');
+      nearStation = found;
+    }
+  }
+
+  // ── Pickup / drop / station actions ───────────────────────
+  function doPickup(p) {
+    if (gameStore.data.heldItem) return; // only 1 at a time
+    play('click');
+    const item = { id: p.item.id, emoji: p.item.emoji, name: p.item.name };
+    const room = gameStore.data.currentRoom;
+    gameStore.update(s => {
+      const next = { ...s, heldItem: item };
+      // If picked from feeding room (no entry in droppedItems), mark as picked
+      const drops = s.droppedItems?.[room] || [];
+      const droppedIdx = drops.findIndex(d => d.id === p.item.id && Math.abs(d.xPercent - p.xPercent) < 0.01);
+      if (droppedIdx >= 0) {
+        const newDrops = drops.slice(0, droppedIdx).concat(drops.slice(droppedIdx + 1));
+        next.droppedItems = { ...(s.droppedItems || {}), [room]: newDrops };
+      } else if (room === 'feeding') {
+        next.feedingPickedIds = [...(s.feedingPickedIds || []), p.item.id];
+      }
+      return next;
+    });
+    buildRoomProps(gameStore.data.currentRoom);
+  }
+
+  function doDrop() {
+    if (!gameStore.data.heldItem || petX === null || !gameWorldEl) return;
+    play('click');
+    const room = gameStore.data.currentRoom;
+    const sz = getPetSize();
+    const worldW = Math.max(1, gameWorldEl.clientWidth);
+    const xPercent = Math.max(4, Math.min(96, ((petX + sz / 2) / worldW) * 100));
+    const item = gameStore.data.heldItem;
+
+    gameStore.update(s => {
+      const next = { ...s, heldItem: null };
+      if (room === 'feeding') {
+        // Restore item to feeding room (remove from picked list)
+        next.feedingPickedIds = (s.feedingPickedIds || []).filter(id => id !== item.id);
+      } else {
+        const drops = s.droppedItems?.[room] || [];
+        next.droppedItems = {
+          ...(s.droppedItems || {}),
+          [room]: [...drops, { ...item, xPercent }],
+        };
+      }
+      return next;
+    });
+    buildRoomProps(gameStore.data.currentRoom);
+  }
+
+  function interactWithStation(station) {
+    if (!station) return;
+    if (station.type === 'inspect') {
+      if (!gameStore.data.heldItem) {
+        sadMessage = '🔬 Nothing to inspect!';
+        clearTimeout(sadTimer);
+        sadTimer = setTimeout(() => { sadMessage = ''; }, 1800);
+        return;
+      }
+      openInspect();
+    } else if (station.type === 'journal') {
+      openJournal();
+    } else if (station.type === 'mixer') {
+      const slots = gameStore.data.mixSlots || [null, null];
+      if (slots[0] && slots[1]) {
+        // Both slots filled — press red button to mix
+        triggerMix();
+      } else if (gameStore.data.heldItem) {
+        insertIntoMixer();
+      } else {
+        sadMessage = '🧪 Pick up an item first!';
+        clearTimeout(sadTimer);
+        sadTimer = setTimeout(() => { sadMessage = ''; }, 1800);
+      }
+    }
+  }
+
+  function insertIntoMixer() {
+    const item = gameStore.data.heldItem;
+    if (!item) return;
+    const slots = [...(gameStore.data.mixSlots || [null, null])];
+    const slotIdx = slots[0] === null ? 0 : slots[1] === null ? 1 : -1;
+    if (slotIdx === -1) return;
+    play('click');
+    slots[slotIdx] = { id: item.id, emoji: item.emoji, name: item.name };
+    gameStore.update(s => ({ ...s, heldItem: null, mixSlots: slots }));
+    buildRoomProps('lab-science');
+  }
+
+  function triggerMix() {
+    const slots = gameStore.data.mixSlots || [null, null];
+    if (!slots[0] || !slots[1]) return;
+    play('evolve');
+    const result = recipeFor(slots[0], slots[1]);
+    const entryKey = [slots[0].id, slots[1].id].sort().join('+');
+    const ingredients = [
+      { id: slots[0].id, emoji: slots[0].emoji, name: slots[0].name },
+      { id: slots[1].id, emoji: slots[1].emoji, name: slots[1].name },
+    ];
+    // Find mixer DOM element to add animation class
+    const mixerProp = scienceProps.find(s => s.type === 'mixer');
+    if (mixerProp) mixerProp.el.classList.add('sci-mixer--mixing');
+
+    clearTimeout(mixResultTimer);
+    mixResultTimer = setTimeout(() => {
+      mixResultMsg = result;
+      const now = Date.now();
+      // Clear slots, respawn foods, and log to journal
+      gameStore.update(s => {
+        const journal = Array.isArray(s.journal) ? [...s.journal] : [];
+        const idx = journal.findIndex(e => e.key === entryKey);
+        if (idx >= 0) {
+          journal[idx] = { ...journal[idx], count: (journal[idx].count || 1) + 1, lastAt: now };
+        } else {
+          journal.push({
+            key: entryKey,
+            emoji: result.emoji,
+            name: result.name,
+            quip: result.quip,
+            ingredients,
+            count: 1,
+            firstAt: now,
+            lastAt: now,
+          });
+        }
+        return {
+          ...s,
+          mixSlots: [null, null],
+          feedingPickedIds: [],
+          droppedItems: {},
+          journal,
+        };
+      });
+      if (mixerProp) mixerProp.el.classList.remove('sci-mixer--mixing');
+      buildRoomProps('lab-science');
+      mixResultTimer = setTimeout(() => { mixResultMsg = null; }, 3500);
+    }, 1400);
+  }
+
+  function openInspect() {
+    const item = gameStore.data.heldItem;
+    if (!item) return;
+    play('click');
+    inspectText = INSPECT_TEXTS[item.id] || INSPECT_DEFAULT;
+    inspectOpen = true;
+  }
+
+  function closeInspect() {
+    if (!inspectOpen) return;
+    inspectOpen = false;
+    inspectText = '';
+    // Inspect closing also restocks foods (per spec)
+    gameStore.update(s => ({
+      ...s,
+      feedingPickedIds: [],
+      droppedItems: {},
+    }));
+    buildRoomProps(gameStore.data.currentRoom);
+  }
+
+  function openJournal() {
+    play('click');
+    journalOpen = true;
+  }
+
+  function closeJournal() {
+    if (!journalOpen) return;
+    journalOpen = false;
   }
 
   // ── Elevator proximity ─────────────────────────────────────
@@ -416,7 +820,9 @@
       if (petPartsEl) petPartsEl.classList.toggle('jumping', isJumping);
       applyPetTransform();
       checkDoors();
+      checkPickups();
       if (gameStore.data.currentRoom === 'lab') checkElevator();
+      if (gameStore.data.currentRoom === 'lab-science') checkStations();
     }
 
     rafId = requestAnimationFrame(tick);
@@ -426,6 +832,10 @@
   function onWorldPointerDown(e) {
     if (petX === null || enteringRoom) return;
     if (e.target.closest('.room-door')) return;
+    if (e.target.closest('.pickup-prop')) return;
+    if (e.target.closest('.sci-station')) return;
+    if (e.target.closest('.sci-mixer')) return;
+    if (e.target.closest('.lab-elevator')) return;
     const rect = gameWorldEl.getBoundingClientRect();
     walkTarget = e.clientX - rect.left;
   }
@@ -451,6 +861,34 @@
       sadMessage = '😢 Too sad to respond!';
       clearTimeout(sadTimer);
       sadTimer = setTimeout(() => { sadMessage = ''; }, 2000);
+    }
+  }
+
+  // Feed the pet by consuming the currently held food item.
+  // Awards a click (subject to mood), restores hunger, and triggers level-up.
+  function doEat() {
+    if (!gameStore.data.heldItem) return;
+    play('feed');
+    let tooSad = false;
+    let leveledUp = false;
+    gameStore.update(s => {
+      const result = doFeed(s.needs, s.clicks);
+      tooSad = result.tooSad;
+      let newLevel = s.level;
+      if (s.level === 'Baby'     && result.clicks >= TEEN_THRESHOLD)   { newLevel = 'Teenager';        leveledUp = true; }
+      if (s.level === 'Teenager' && result.clicks >= LEGEND_THRESHOLD) { newLevel = 'Legendary Adult'; leveledUp = true; }
+      return { ...s, heldItem: null, needs: result.needs, clicks: result.clicks, level: newLevel };
+    });
+    if (tooSad) {
+      sadMessage = '😢 Too sad to respond!';
+      clearTimeout(sadTimer);
+      sadTimer = setTimeout(() => { sadMessage = ''; }, 2000);
+    }
+    if (leveledUp) {
+      play('evolve');
+      sadMessage = `✨ Evolved to ${gameStore.data.level}!`;
+      clearTimeout(sadTimer);
+      sadTimer = setTimeout(() => { sadMessage = ''; }, 2500);
     }
   }
 
@@ -487,12 +925,30 @@
 
     const onKeyDown = e => {
       const k = e.key.toLowerCase();
+      if (inspectOpen) {
+        if (e.code === 'Space' || k === 'escape' || k === 'q') { e.preventDefault(); closeInspect(); }
+        return;
+      }
+      if (journalOpen) {
+        if (e.code === 'Space' || k === 'escape' || k === 'q') { e.preventDefault(); closeJournal(); }
+        return;
+      }
       if (k === 'a' || e.key === 'ArrowLeft')  { keys.a = true; e.preventDefault(); }
       if (k === 'd' || e.key === 'ArrowRight') { keys.d = true; e.preventDefault(); }
+      if (k === 'q' && !enteringRoom) {
+        e.preventDefault();
+        if (gameStore.data.heldItem) doDrop();
+      }
+      if (k === 'e' && !enteringRoom) {
+        e.preventDefault();
+        if (gameStore.data.heldItem) doEat();
+      }
       if (e.code === 'Space' && !enteringRoom) {
         e.preventDefault();
         if (nearDoor) { enterDoor(nearDoor); }
         else if (nearElevator && !labElevatorScrolling) { rideElevator(); }
+        else if (nearPickup) { doPickup(nearPickup); }
+        else if (nearStation) { interactWithStation(nearStation); }
         else if (!isJumping) { isJumping = true; jumpVY = JUMP_FORCE; }
       }
     };
@@ -520,6 +976,7 @@
   onDestroy(() => {
     clearInterval(needTimer);
     cancelAnimationFrame(rafId);
+    clearTimeout(mixResultTimer);
     _cleanup?.();
     if (petX !== null) gameStore.update(s => ({ ...s, petX, petY }));
   });
@@ -565,10 +1022,80 @@
       <div class="room-props" bind:this={roomPropsEl}></div>
       <div class="pet-parts" bind:this={petPartsEl}>
         <img class="pet-part-img" src={petImage} alt={petName} />
+        {#if heldItem}
+          <button
+            type="button"
+            class="held-item-bubble"
+            title={`Tap to eat ${heldItem.name} (E)`}
+            onpointerdown={(e) => { e.stopPropagation(); doEat(); }}
+          ><span>{heldItem.emoji}</span></button>
+        {/if}
       </div>
     </div>
     {#if sadMessage}
       <div class="sad-toast">{sadMessage}</div>
+    {/if}
+    {#if mixResultMsg}
+      <div class="mix-result-toast">
+        <span class="mix-result-emoji">{mixResultMsg.emoji}</span>
+        <strong class="mix-result-name">{mixResultMsg.name}</strong>
+        <em class="mix-result-quip">{mixResultMsg.quip}</em>
+      </div>
+    {/if}
+    {#if inspectOpen}
+      <div
+        class="inspect-overlay"
+        onpointerdown={closeInspect}
+        role="button"
+        tabindex="0"
+        aria-label="Close inspect view"
+      >
+        <div class="inspect-modal">
+          <div class="inspect-lens">
+            <span class="inspect-lens-emoji">{heldItem?.emoji ?? '❓'}</span>
+          </div>
+          <div class="inspect-name">{heldItem?.name ?? 'Unknown'}</div>
+          <p class="inspect-text">{inspectText}</p>
+          <span class="inspect-close-hint">SPACE / tap to close</span>
+        </div>
+      </div>
+    {/if}
+    {#if journalOpen}
+      <div
+        class="inspect-overlay"
+        onpointerdown={closeJournal}
+        role="button"
+        tabindex="0"
+        aria-label="Close journal"
+      >
+        <div class="inspect-modal journal-modal" onpointerdown={e => e.stopPropagation()} role="presentation">
+          <div class="inspect-name">📓 RECIPE JOURNAL</div>
+          {#if journal.length === 0}
+            <p class="inspect-text">No cooked foods yet.<br/>Mix two ingredients in the Elemental Mix machine to discover recipes.</p>
+          {:else}
+            <ul class="journal-list">
+              {#each journal as entry (entry.key)}
+                <li class="journal-entry">
+                  <span class="journal-emoji">{entry.emoji}</span>
+                  <div class="journal-text">
+                    <strong class="journal-name">{entry.name}</strong>
+                    <span class="journal-recipe">
+                      {#each entry.ingredients as ing, i}
+                        <span title={ing.name}>{ing.emoji}</span>{#if i < entry.ingredients.length - 1}<span class="journal-plus">+</span>{/if}
+                      {/each}
+                    </span>
+                    <em class="journal-quip">{entry.quip}</em>
+                  </div>
+                  {#if entry.count > 1}
+                    <span class="journal-count">×{entry.count}</span>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          <span class="inspect-close-hint">SPACE / tap to close</span>
+        </div>
+      </div>
     {/if}
   </div>
 

@@ -17,6 +17,16 @@ function snapshot(state) {
     parentJobs: [...(state.parentJobs || [])],
     bgCleaned: { ...state.bgCleaned },
     renderModes: { ...state.renderModes },
+    heldItem: state.heldItem ? { ...state.heldItem } : null,
+    mixSlots: [...(state.mixSlots || [null, null])].map(s => s ? { ...s } : null),
+    feedingPickedIds: [...(state.feedingPickedIds || [])],
+    droppedItems: Object.fromEntries(
+      Object.entries(state.droppedItems || {}).map(([k, arr]) => [k, (arr || []).map(d => ({ ...d }))])
+    ),
+    journal: (state.journal || []).map(e => ({
+      ...e,
+      ingredients: (e.ingredients || []).map(i => ({ ...i })),
+    })),
   };
 }
 
@@ -33,6 +43,11 @@ function hydrate(saved) {
     bgCleaned: saved.bgCleaned || {},
     renderModes: saved.renderModes || {},
     labElevatorScrolling: false,
+    heldItem: saved.heldItem || null,
+    mixSlots: Array.isArray(saved.mixSlots) && saved.mixSlots.length === 2 ? saved.mixSlots : [null, null],
+    feedingPickedIds: Array.isArray(saved.feedingPickedIds) ? saved.feedingPickedIds : [],
+    droppedItems: saved.droppedItems && typeof saved.droppedItems === 'object' ? saved.droppedItems : {},
+    journal: Array.isArray(saved.journal) ? saved.journal : [],
   };
 }
 

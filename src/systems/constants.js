@@ -145,5 +145,10 @@ export function createInitialGameState() {
     renderModes: {},
     labFloor: 1,
     labElevatorScrolling: false,
+    heldItem: null,                 // { id, emoji, name } | null — item carried above pet head
+    mixSlots: [null, null],         // two-slot Elemental Mix machine input
+    feedingPickedIds: [],           // food item ids currently NOT in feeding room (held / in mixer / dropped elsewhere)
+    droppedItems: {},               // { roomId: [{ id, emoji, name, xPercent }] } — items dropped in non-feeding rooms
+    journal: [],                    // [{ key, emoji, name, quip, ingredients:[{id,emoji,name},...], count, firstAt, lastAt }] — discovered cooked foods
   };
 }

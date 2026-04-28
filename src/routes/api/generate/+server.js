@@ -3,6 +3,7 @@
 //  Replaces api/generate.js. Keeps the API key secret server-side.
 // ============================================================
 import { json } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 
 const ALLOWED_MODELS = [
   'gemini-2.5-flash-image',
@@ -14,6 +15,9 @@ const ALLOWED_MODELS = [
 export async function POST({ request }) {
   const headerApiKey = (request.headers.get('x-gemini-api-key') || '').trim();
   const apiKey =
+    env.GEMINI_API_KEY ||
+    env.GOOGLE_API_KEY ||
+    env.API_KEY ||
     process.env.GEMINI_API_KEY ||
     process.env.GOOGLE_API_KEY ||
     process.env.API_KEY ||
