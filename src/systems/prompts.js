@@ -37,7 +37,12 @@ export function buildPrompt(ingredients, level, job = null, refinementNotes = ''
     }
   }
 
-  let desc = `A ${sizeWord} ${animal}`;
+  // Fall back to a generic word when ingredients are missing/invalid so we
+  // never emit literal "null"/"undefined" into the prompt — that produced
+  // garbled creatures and surfaced as a Gemini safety/quality issue.
+  const animalWord   = animal   ? String(animal)   : 'creature';
+
+  let desc = `A ${sizeWord} ${animalWord}`;
   if (color)    desc += ` with ${color} coloring`;
   if (wildcard) desc += `, featuring a ${wildcard} as part of its body or as an accessory`;
   if (element)  desc += `, with a ${element} texture`;

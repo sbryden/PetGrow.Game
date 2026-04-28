@@ -27,6 +27,14 @@
 
   onDestroy(() => {
     clearInterval(dotTimer);
+    // If we unmount while waiting on the user to enter a client API key,
+    // resolve the pending promise with '' so fetchCreatureImage exits its
+    // await and the awaiting startGeneration() can settle (it will throw
+    // and be swallowed by its own catch — but nothing is left dangling).
+    if (resolveApiKey) {
+      resolveApiKey('');
+      resolveApiKey = null;
+    }
   });
 
   async function startGeneration() {
@@ -89,6 +97,12 @@
 
   function goBack() {
     isGenerating = false;
+    // Resolve any pending API-key prompt with '' (= abort) before leaving,
+    // so the in-flight fetchCreatureImage promise settles cleanly.
+    if (resolveApiKey) {
+      resolveApiKey('');
+      resolveApiKey = null;
+    }
     goto('/lab');
   }
 </script>

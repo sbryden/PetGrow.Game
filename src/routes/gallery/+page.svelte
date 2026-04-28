@@ -2,13 +2,15 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { gameStore } from '$lib/GameState.svelte.js';
-  import { loadAll, deleteCreature } from '$lib/db.js';
+  import { loadAll, deleteCreature, saveCreature } from '$lib/db.js';
   import { calculateRarity, TRANSPARENT_PIXEL } from '$systems/constants.js';
   import BackendStatus from '$components/BackendStatus.svelte';
 
   let creatures = $state([]);
   let sortBy = $state('retiredAt');
   let loading = $state(true);
+  // Creature pending delete confirmation. null = no modal open.
+  let pendingDelete = $state(null);
 
   let activeCreature = $derived(
     gameStore.data.createdAt && gameStore.data.petName ? gameStore.data : null
@@ -38,12 +40,54 @@
   }
 
   async function remove(id) {
-    if (!confirm('Delete this creature from your gallery? This cannot be undone.')) return;
     await deleteCreature(id);
     await refresh();
   }
 
+  function askDelete(creature) {
+    pendingDelete = creature;
+  }
+
+  function cancelDelete() {
+    pendingDelete = null;
+  }
+
+  async function confirmDelete() {
+    const c = pendingDelete;
+    pendingDelete = null;
+    if (!c) return;
+    await remove(c.id);
+  }
+
   async function equip(creature) {
+    // Auto-hibernate any currently-active creature so it's preserved in the
+    // gallery instead of being silently overwritten by the equipped one.
+    // Skip when the equipped creature *is* the currently-active one
+    // (matching createdAt) — otherwise we'd archive a duplicate.
+    const current = gameStore.data;
+    if (
+      current.createdAt &&
+      current.petName &&
+      current.createdAt !== creature.createdAt
+    ) {
+      try {
+        await saveCreature({
+          petName: current.petName,
+          level: current.level,
+          ingredients: { ...(current.ingredients || {}) },
+          job: current.job,
+          clicks: current.clicks,
+          needs: { ...(current.needs || {}) },
+          cachedImages: { ...(current.cachedImages || {}) },
+          createdAt: current.createdAt,
+          retiredAt: Date.now(),
+        });
+      } catch (e) {
+        console.error('Failed to hibernate active creature on equip:', e);
+      }
+      await gameStore.reset();
+    }
+
     gameStore.update(s => ({
       ...s,
       petName: creature.petName,
@@ -156,7 +200,7 @@
             </div>
             <div class="card-actions">
               <button class="btn-equip" onclick={() => equip(creature)}>Play</button>
-              <button class="btn-delete" onclick={() => remove(creature.id)}>Delete</button>
+              <button class="btn-delete" onclick={() => askDelete(creature)}>Delete</button>
             </div>
           </div>
         {/each}
@@ -168,8 +212,29 @@
   <!-- Footer actions -->
   <footer class="gallery-footer">
     <button class="btn-footer btn-footer-primary" onclick={goBack}>Create New Creature</button>
-    <button class="btn-footer btn-footer-secondary" onclick={goBack}>Back</button>
   </footer>
+
+  <!-- Delete confirm modal -->
+  {#if pendingDelete}
+    <div class="modal-backdrop" onpointerdown={cancelDelete} role="presentation">
+      <div
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-title"
+        onpointerdown={(e) => e.stopPropagation()}
+      >
+        <p id="delete-title" class="modal-title">Delete creature?</p>
+        <p class="modal-body">
+          {pendingDelete.petName || 'This creature'} will be permanently removed from your gallery. This cannot be undone.
+        </p>
+        <div class="modal-actions">
+          <button class="modal-btn modal-btn-cancel" onclick={cancelDelete}>Cancel</button>
+          <button class="modal-btn modal-btn-confirm" onclick={confirmDelete}>Delete</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 
 </div>
 
@@ -463,10 +528,72 @@
   }
   .btn-footer-primary:hover { border-color: #00d2ff; color: #00d2ff; }
 
-  .btn-footer-secondary {
-    background: #131625;
-    border: 2px solid #2a3060;
-    color: #8899cc;
+  /* ── Delete confirm modal ─────────────────────────── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 1rem;
   }
-  .btn-footer-secondary:hover { border-color: #5a6490; color: #c0ccee; }
+
+  .modal-card {
+    background: #131625;
+    border: 2px solid #e94560;
+    border-radius: 12px;
+    padding: 1rem;
+    max-width: 320px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  }
+
+  .modal-title {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.7rem;
+    color: #e94560;
+    margin: 0;
+  }
+
+  .modal-body {
+    font-size: 0.75rem;
+    color: #c0ccee;
+    line-height: 1.4;
+    margin: 0;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .modal-btn {
+    flex: 1;
+    padding: 0.65rem;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 0.55rem;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    border: 2px solid transparent;
+  }
+
+  .modal-btn-cancel {
+    background: #1a1f38;
+    border-color: #2a3060;
+    color: #c0ccee;
+  }
+  .modal-btn-cancel:hover { border-color: #00d2ff; color: #00d2ff; }
+
+  .modal-btn-confirm {
+    background: #e9456022;
+    border-color: #e94560;
+    color: #e94560;
+  }
+  .modal-btn-confirm:hover { background: #e9456044; }
 </style>

@@ -7,6 +7,8 @@
   import { doFeed, doClean, doPlay, doSleep, applyNeedDecay, calcMissedNeedTicks } from '$systems/needs.js';
   import { ROOMS, PLATFORM_ROOM_ID, NEED_WARN_THRESHOLD, NEED_CRITICAL_THRESHOLD, TEEN_THRESHOLD, LEGEND_THRESHOLD, TRANSPARENT_PIXEL } from '$systems/constants.js';
   import { saveCreature } from '$lib/db.js';
+  import { buildPrompt } from '$systems/prompts.js';
+  import { fetchCreatureImage, removeBackground } from '$lib/api.js';
   import BackendStatus from '$components/BackendStatus.svelte';
 
   // ── Platform constants ─────────────────────────────────────
@@ -52,7 +54,22 @@
   }
 
   // ── Derived UI values (replaces $: reactive statements) ───
-  let petImage     = $derived(gameStore.data.cachedImages?.[gameStore.data.level] ?? gameStore.data.cachedImages?.raw ?? TRANSPARENT_PIXEL);
+  // petImage walks back through the evolution chain so that if a higher
+  // level's sprite failed to generate (network/API error), the pet silently
+  // shows its previous level's sprite instead of jumping straight to the
+  // baby/raw image. The level itself stays promoted; only the visual falls
+  // back. regenerateForLevel will retry on the next level-up event.
+  let petImage     = $derived.by(() => {
+    const cached = gameStore.data.cachedImages || {};
+    const lvl    = gameStore.data.level || 'Baby';
+    if (lvl === 'Legendary Adult') {
+      return cached['Legendary Adult'] ?? cached['Teenager'] ?? cached['Baby'] ?? cached.raw ?? TRANSPARENT_PIXEL;
+    }
+    if (lvl === 'Teenager') {
+      return cached['Teenager'] ?? cached['Baby'] ?? cached.raw ?? TRANSPARENT_PIXEL;
+    }
+    return cached['Baby'] ?? cached.raw ?? TRANSPARENT_PIXEL;
+  });
   let currentRoomId = $derived(gameStore.data.currentRoom || PLATFORM_ROOM_ID);
   let currentRoom  = $derived(ROOMS.find(r => r.id === currentRoomId) || ROOMS[0]);
   let actions      = $derived(currentRoom?.actions || []);
@@ -664,8 +681,10 @@
         return {
           ...s,
           mixSlots: [null, null],
+          // Respawn feeding-room foods only — wiping droppedItems entirely
+          // would also delete pickups the player intentionally dropped in
+          // other rooms (bedroom, lab, playroom, etc.).
           feedingPickedIds: [],
-          droppedItems: {},
           journal,
         };
       });
@@ -687,11 +706,11 @@
     if (!inspectOpen) return;
     inspectOpen = false;
     inspectText = '';
-    // Inspect closing also restocks foods (per spec)
+    // Inspect closing restocks the feeding-room foods (per spec) but must
+    // not delete user-placed drops in other rooms.
     gameStore.update(s => ({
       ...s,
       feedingPickedIds: [],
-      droppedItems: {},
     }));
     buildRoomProps(gameStore.data.currentRoom);
   }
@@ -841,9 +860,50 @@
   }
 
   // ── Actions ───────────────────────────────────────────────
+  // Track in-flight evolution image regenerations so we don't fire duplicates.
+  const evolvingLevels = new Set();
+
+  // Generate (and cache) a sprite for `newLevel` using the current
+  // ingredients/job. The new visual swaps in automatically because
+  // `petImage` is derived from `cachedImages[level]`.
+  async function regenerateForLevel(newLevel) {
+    if (!newLevel || evolvingLevels.has(newLevel)) return;
+    if (gameStore.data.cachedImages?.[newLevel]) return;
+    evolvingLevels.add(newLevel);
+    try {
+      const { ingredients, job } = gameStore.data;
+      const prompt = buildPrompt(ingredients, newLevel, job?.id ?? null);
+      const raw = await fetchCreatureImage(prompt);
+      const cleaned = await removeBackground(raw);
+      gameStore.update(s => ({
+        ...s,
+        cachedImages: { ...s.cachedImages, [newLevel]: cleaned },
+      }));
+      await gameStore.saveNow();
+    } catch (err) {
+      console.error('Evolution image generation failed:', err);
+    } finally {
+      evolvingLevels.delete(newLevel);
+    }
+  }
+
+  // Compute the final level given the current level and a fresh click count.
+  // Walks the chain Baby -> Teenager -> Legendary Adult so a single action
+  // that crosses *both* thresholds (e.g. when constants are tuned low or
+  // multiple click gains stack) still ends in the correct terminal level
+  // instead of stopping at Teenager because the original branch checked the
+  // pre-update `s.level`.
+  function levelForClicks(currentLevel, clicks) {
+    let level = currentLevel;
+    if (level === 'Baby'     && clicks >= TEEN_THRESHOLD)   level = 'Teenager';
+    if (level === 'Teenager' && clicks >= LEGEND_THRESHOLD) level = 'Legendary Adult';
+    return level;
+  }
+
   function doAction(type) {
     play(type);
     let tooSad = false;
+    let leveledUp = false;
     gameStore.update(s => {
       let result;
       if (type === 'feed')  result = doFeed(s.needs, s.clicks);
@@ -852,15 +912,21 @@
       if (type === 'sleep') result = doSleep(s.needs, s.clicks);
       if (!result) return s;
       tooSad = result.tooSad;
-      let newLevel = s.level;
-      if (s.level === 'Baby'     && result.clicks >= TEEN_THRESHOLD)   newLevel = 'Teenager';
-      if (s.level === 'Teenager' && result.clicks >= LEGEND_THRESHOLD) newLevel = 'Legendary Adult';
+      const newLevel = levelForClicks(s.level, result.clicks);
+      if (newLevel !== s.level) leveledUp = true;
       return { ...s, needs: result.needs, clicks: result.clicks, level: newLevel };
     });
     if (tooSad) {
       sadMessage = '😢 Too sad to respond!';
       clearTimeout(sadTimer);
       sadTimer = setTimeout(() => { sadMessage = ''; }, 2000);
+    }
+    if (leveledUp) {
+      play('evolve');
+      sadMessage = `✨ Evolved to ${gameStore.data.level}!`;
+      clearTimeout(sadTimer);
+      sadTimer = setTimeout(() => { sadMessage = ''; }, 2500);
+      regenerateForLevel(gameStore.data.level);
     }
   }
 
@@ -874,9 +940,8 @@
     gameStore.update(s => {
       const result = doFeed(s.needs, s.clicks);
       tooSad = result.tooSad;
-      let newLevel = s.level;
-      if (s.level === 'Baby'     && result.clicks >= TEEN_THRESHOLD)   { newLevel = 'Teenager';        leveledUp = true; }
-      if (s.level === 'Teenager' && result.clicks >= LEGEND_THRESHOLD) { newLevel = 'Legendary Adult'; leveledUp = true; }
+      const newLevel = levelForClicks(s.level, result.clicks);
+      if (newLevel !== s.level) leveledUp = true;
       return { ...s, heldItem: null, needs: result.needs, clicks: result.clicks, level: newLevel };
     });
     if (tooSad) {
@@ -889,6 +954,7 @@
       sadMessage = `✨ Evolved to ${gameStore.data.level}!`;
       clearTimeout(sadTimer);
       sadTimer = setTimeout(() => { sadMessage = ''; }, 2500);
+      regenerateForLevel(gameStore.data.level);
     }
   }
 

@@ -26,18 +26,27 @@ export function getClickValue(needs) {
 
 /** Apply one tick of need decay, capped at NEED_MAX_MISSED_TICKS. */
 export function applyNeedDecay(needs, missedTicks = 1) {
-  const capped = Math.min(missedTicks, NEED_MAX_MISSED_TICKS);
+  // Floor at 0 (negatives would *raise* needs via subtraction sign-flip)
+  // and cap at NEED_MAX_MISSED_TICKS (prevents one offline week from
+  // zeroing every need on return).
+  const safe = Math.max(0, Math.min(missedTicks, NEED_MAX_MISSED_TICKS));
   return {
-    hunger:      clampNeed(needs.hunger      - NEED_DECAY_AMOUNT * capped),
-    cleanliness: clampNeed(needs.cleanliness - NEED_DECAY_AMOUNT * capped),
-    fun:         clampNeed(needs.fun         - NEED_DECAY_AMOUNT * capped),
-    energy:      clampNeed(needs.energy      - NEED_DECAY_AMOUNT * capped),
+    hunger:      clampNeed(needs.hunger      - NEED_DECAY_AMOUNT * safe),
+    cleanliness: clampNeed(needs.cleanliness - NEED_DECAY_AMOUNT * safe),
+    fun:         clampNeed(needs.fun         - NEED_DECAY_AMOUNT * safe),
+    energy:      clampNeed(needs.energy      - NEED_DECAY_AMOUNT * safe),
   };
 }
 
 /** Calculate missed need decay ticks from the last decay timestamp. */
 export function calcMissedNeedTicks(lastNeedDecayTime) {
+  // Guard against future timestamps (clock skew, system clock changes,
+  // restoring a save from a device whose clock was ahead). A negative
+  // elapsed value would otherwise become a negative tick count which the
+  // caller then clamps with Math.min, leaking a negative through to
+  // applyNeedDecay and *increasing* needs.
   const elapsed = Date.now() - lastNeedDecayTime;
+  if (!Number.isFinite(elapsed) || elapsed <= 0) return 0;
   return Math.floor(elapsed / NEED_DECAY_INTERVAL_MS);
 }
 

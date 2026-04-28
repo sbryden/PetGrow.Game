@@ -38,6 +38,12 @@
     return { text: 'Pick at least a Base Animal and give it a name!', color: '' };
   });
 
+  // Monotonic token used to invalidate stale syringe-animation timers when
+  // the user picks a new ingredient before the previous 2200ms animation
+  // finishes. Only the call whose token matches at resume-time clears
+  // syringeVisible/syringeAnimating; older calls bail out silently.
+  let syringeToken = 0;
+
   async function onIngredientChange(category, value) {
     if (value) {
       ingredients = { ...ingredients, [category]: value };
@@ -45,7 +51,11 @@
       syringeVisible = true;
       syringeAnimating = true;
       play('inject');
+      const myToken = ++syringeToken;
       await sleep(2200);
+      // If another ingredient change started in the meantime, that newer
+      // call owns the animation state — don't stomp on it.
+      if (myToken !== syringeToken) return;
       syringeVisible = false;
       syringeAnimating = false;
     } else {
@@ -56,6 +66,11 @@
   async function pickRandomName() {
     const all = await loadAll().catch(() => []);
     const usedNames = new Set(all.map(c => (c.petName || '').toLowerCase()));
+    // Also exclude the currently-active creature's name (if any), so the
+    // dice never re-suggests a name already in use by the live pet that
+    // hasn't been hibernated to the gallery yet.
+    const activeName = (gameStore.data.petName || '').toLowerCase();
+    if (activeName) usedNames.add(activeName);
     if (petName) usedNames.add(petName.toLowerCase());
     const available = CREATURE_NAMES.filter(n => !usedNames.has(n.toLowerCase()));
     const pool = available.length > 0 ? available : CREATURE_NAMES;

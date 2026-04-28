@@ -144,6 +144,22 @@ describe('calcMissedNeedTicks', () => {
   it('returns 5 for 5 intervals elapsed', () => {
     expect(calcMissedNeedTicks(Date.now() - NEED_DECAY_INTERVAL_MS * 5)).toBe(5);
   });
+
+  it('returns 0 when timestamp is in the future (clock skew)', () => {
+    expect(calcMissedNeedTicks(Date.now() + NEED_DECAY_INTERVAL_MS * 10)).toBe(0);
+  });
+
+  it('returns 0 for non-finite or invalid timestamps', () => {
+    expect(calcMissedNeedTicks(NaN)).toBe(0);
+    expect(calcMissedNeedTicks(Infinity)).toBe(0);
+  });
+});
+
+describe('applyNeedDecay negative-tick guard', () => {
+  it('does not increase needs when given a negative missedTicks', () => {
+    const before = { hunger: 50, cleanliness: 50, fun: 50, energy: 50 };
+    expect(applyNeedDecay(before, -5)).toEqual(before);
+  });
 });
 
 // ── action resolvers ───────────────────────────────────────────────────────

@@ -3,8 +3,25 @@
 //  ES Module version.
 // ============================================================
 
+// Tiny localStorage shim that no-ops in SSR / non-browser contexts and
+// swallows Safari-private-mode quota errors. Keeping this isolated means
+// every read/write below is safe even if the module is imported from a
+// server endpoint by accident.
+function safeGetItem(key) {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(key);
+  } catch { return null; }
+}
+function safeSetItem(key, value) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(key, value);
+  } catch { /* ignore quota / disabled storage */ }
+}
+
 let ctx = null;
-let _enabled = localStorage.getItem('petgrow_sound') !== 'off';
+let _enabled = safeGetItem('petgrow_sound') !== 'off';
 
 function getCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -149,7 +166,7 @@ export function play(name) {
 
 export function toggle() {
   _enabled = !_enabled;
-  localStorage.setItem('petgrow_sound', _enabled ? 'on' : 'off');
+  safeSetItem('petgrow_sound', _enabled ? 'on' : 'off');
   return _enabled;
 }
 
@@ -159,5 +176,5 @@ export function isEnabled() {
 
 export function setEnabled(v) {
   _enabled = v;
-  localStorage.setItem('petgrow_sound', v ? 'on' : 'off');
+  safeSetItem('petgrow_sound', v ? 'on' : 'off');
 }
